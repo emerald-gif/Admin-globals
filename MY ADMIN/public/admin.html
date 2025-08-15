@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Dashboard - 2025 Fintech UI</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+  
+ 
+
+
+  <style>
+    .dashboard-card {
+      @apply bg-white rounded-2xl shadow-lg p-6 border border-gray-100;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+  <div class="min-h-screen flex">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white shadow-xl rounded-r-3xl p-5">
+      <div class="text-2xl font-bold text-blue-700 mb-6">Globals Admin</div>
+      <nav class="space-y-4">
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('overview')">
+          <i data-lucide="bar-chart-3" class="w-5 h-5"></i> Overview
+        </button>
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('users')">
+          <i data-lucide="users" class="w-5 h-5"></i> Users
+        </button>
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('adminReviewJobsSection')">
+          <i data-lucide="clipboard-list" class="w-5 h-5"></i> Affiliate/Tasks Jobs
+        </button>
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('taskSubmissionsTab')">
+          <i data-lucide="file-check" class="w-5 h-5"></i> Task Submissions
+        </button>
+
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('adminPostJob')">
+          <i data-lucide="file-check" class="w-5 h-5"></i> Post Admin Job
+        </button>
+
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('withdrawals')">
+          <i data-lucide="banknote" class="w-5 h-5"></i> Withdrawals
+        </button>
+
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('adminNotificationSender')">
+          <i data-lucide="banknote" class="w-5 h-5"></i> Notification
+        </button>
+
+
+
+
+
+      </nav>
+    </aside>
+
+    <!-- Content Area -->
+    <main class="flex-1 p-6 overflow-y-auto">
+      <!-- Overview -->
+      <section id="overview" class="tab">
+        <h2 class="text-2xl font-bold mb-6">Overview</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="dashboard-card">
+            <p class="text-sm text-gray-500">Total Users</p>
+            <p class="text-3xl font-semibold text-blue-600" id="user-count">Loading...</p>
+          </div>
+          <div class="dashboard-card">
+            <p class="text-sm text-gray-500">Tasks Submitted</p>
+            <p class="text-3xl font-semibold text-purple-600" id="task-count">Loading...</p>
+          </div>
+          <div class="dashboard-card">
+            <p class="text-sm text-gray-500">Total Withdrawals</p>
+            <p class="text-3xl font-semibold text-green-600" id="withdrawal-count">Loading...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Users -->
+      <section id="users" class="tab hidden mt-6">
+        <h2 class="text-2xl font-bold mb-4">Users</h2>
+        <div id="user-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+      </section>
+
+      <!-- Tasks -->
+      <section id="adminReviewJobsSection" class="tab hidden mt-6">
+        <h2 class="text-2xl font-bold mb-4">Pending Job Approvals</h2>
+        <div id="adminPendingJobs" class="space-y-4"></div>
+      </section>
+
+      <!-- Task Submissions -->
+      <section id="taskSubmissionsTab" class="tab hidden mt-6">
+        <h2 class="text-2xl font-bold mb-4">Task Submissions</h2>
+        <div id="task-submissions-list" class="space-y-4"></div>
+      </section>
+
+      <!-- Review Section -->
+      <section id="review-section" class="hidden mt-6">
+        <button onclick="backToSubmissions()" class="mb-4 text-blue-600 hover:underline">← Back to Submissions</button>
+        <div id="review-content" class="bg-white p-6 rounded-2xl shadow-xl"></div>
+      </section>
+
+      <!-- Withdrawals -->
+      <section id="withdrawals" class="tab hidden mt-6">
+        <h2 class="text-2xl font-bold mb-4">Withdrawal Requests</h2>
+        <div id="withdrawal-list" class="space-y-4"></div>
+      </section>
+
+      
+
+      <!-- ================== POST ADMIN JOB FORM ================== -->
+<section id="adminPostJob" class="hidden p-4">
+  <h2 class="text-xl font-bold mb-4">Post Admin Job</h2>
+
+  <div class="space-y-4">
+    <input id="adminJobCategory" type="text" placeholder="Category"
+      class="w-full border rounded-lg p-2" />
+
+    <input id="adminJobTitle" type="text" placeholder="Job Title"
+      class="w-full border rounded-lg p-2" />
+
+    <textarea id="adminJobInstructions" placeholder="Instructions"
+      class="w-full border rounded-lg p-2"></textarea>
+
+    <input id="adminJobTargetLink" type="url" placeholder="Target Link"
+      class="w-full border rounded-lg p-2" />
+
+    <input id="adminJobProofRequired" type="text" placeholder="Proof Required"
+      class="w-full border rounded-lg p-2" />
+
+    <input id="adminJobNumWorkers" type="number" placeholder="Number of Workers"
+      class="w-full border rounded-lg p-2" />
+
+    <input id="adminJobWorkerPay" type="number" placeholder="Pay per Worker (₦)"
+      class="w-full border rounded-lg p-2" />
+
+    <input id="adminJobProofFileCount" type="number" placeholder="Number of Proof Files" value="1"
+      class="w-full border rounded-lg p-2" />
+
+    <label class="block font-semibold">Campaign Logo</label>
+    <input id="adminJobLogoFile" type="file" accept="image/*"
+      class="w-full border rounded-lg p-2" />
+
+    <button onclick="submitAdminJob()" class="bg-green-500 text-white px-4 py-2 rounded-lg">
+      Post Job
+    </button>
+  </div>
+</section>
+
+
+
+      
+      <div id="adminNotificationSender" class="tab hidden px-4 pt-6 pb-24 max-w-4xl mx-auto">
+  <h2 class="text-2xl font-bold mb-4 text-blue-700">Admin Notifications</h2>
+  
+  <!-- Title -->
+  <input type="text" id="notifTitle" placeholder="Title" class="w-full mb-3 p-2 border rounded" />
+  
+  <!-- Message -->
+  <textarea id="notifMessage" placeholder="Message" class="w-full p-2 border rounded mb-3"></textarea>
+
+  <!-- Actions -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+    <button onclick="sendDashboardNotification()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded w-full">Send to Dashboard Only</button>
+    <button onclick="sendEmailNotification()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded w-full">Send Email Only</button>
+  </div>
+
+  <!-- Email Template Editor -->
+  <h3 class="text-lg font-semibold mt-8 mb-2">Edit Email Template</h3>
+  <textarea id="emailTemplateEditor" class="w-full h-96 p-3 border rounded font-mono text-sm" placeholder="Paste or edit your HTML template here..."></textarea>
+  
+  <div class="mt-3 flex gap-3">
+    <button onclick="saveEmailTemplate()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded">Save Template</button>
+    <button onclick="resetDefaultTemplate()" class="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded">Reset to Default</button>
+  </div>
+</div>
+
+
+
+    </main>
+  </div>
+
+  <script>
+    lucide.createIcons();
+  </script>
+  <script src="admin.js"></script>
+</body>
+</html>

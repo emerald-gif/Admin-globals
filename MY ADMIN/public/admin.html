@@ -52,7 +52,9 @@
           <i data-lucide="banknote" class="w-5 h-5"></i> Notification
         </button>
 
-
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('social-tasks')">
+          <i data-lucide="banknote" class="w-5 h-5"></i> Social Tasks
+        </button>
 
 
 
@@ -153,6 +155,99 @@
 
 
 
+
+
+
+
+<!-- SOCIAL TASKS SECTION -->
+<div id="social-tasks" class="tab-section hidden p-6">
+  <h2 class="text-3xl font-bold mb-8 text-gray-800">📲 Social Task Submissions</h2>
+
+  <!-- Sub Tabs -->
+  <div class="flex space-x-3 mb-8">
+    <button onclick="switchSocialTab('tiktok')" 
+      class="social-tab active">TikTok / Instagram</button>
+    <button onclick="switchSocialTab('whatsapp')" 
+      class="social-tab">WhatsApp</button>
+    <button onclick="switchSocialTab('telegram')" 
+      class="social-tab">Telegram</button>
+  </div>
+
+  <!-- TikTok -->
+  <div id="social-tiktok" class="social-content hidden">
+    <div class="grid gap-6" id="tiktokSubmissions"></div>
+    <button onclick="viewRecords('TiktokInstagram')" class="btn-record">📜 View Records</button>
+  </div>
+
+  <!-- WhatsApp -->
+  <div id="social-whatsapp" class="social-content hidden">
+    <div class="grid gap-6" id="whatsappSubmissions"></div>
+    <button onclick="viewRecords('Whatsapp')" class="btn-record">📜 View Records</button>
+  </div>
+
+  <!-- Telegram -->
+  <div id="social-telegram" class="social-content hidden">
+    <div class="grid gap-6" id="telegramSubmissions"></div>
+    <button onclick="viewRecords('Telegram')" class="btn-record">📜 View Records</button>
+  </div>
+</div>
+
+
+
+
+
+
+      
+<div id="recordsModal" 
+  class="hidden fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center z-50">
+  <div class="bg-white/90 p-6 rounded-2xl shadow-2xl max-w-2xl w-full animate-fadeIn">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-xl font-bold text-gray-800">📜 Task Records</h3>
+      <button onclick="this.closest('#recordsModal').classList.add('hidden')" 
+        class="text-gray-600 hover:text-red-500 transition">✖</button>
+    </div>
+    <div id="recordsModalContent" class="space-y-4"></div>
+  </div>
+</div>
+
+
+
+
+      <style>
+  .social-tab {
+    @apply px-5 py-2 rounded-xl bg-gray-100 text-gray-700 font-medium 
+           shadow-sm hover:bg-blue-100 hover:text-blue-600 transition;
+  }
+  .social-tab.active {
+    @apply bg-blue-600 text-white shadow-lg;
+  }
+  .btn-record {
+    @apply mt-6 px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-blue-500 
+           text-white font-semibold shadow-md hover:opacity-90 transition;
+  }
+  .animate-fadeIn {
+    animation: fadeIn 0.4s ease-in-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+    </style>
+
+
+
+      
+
+
+
+
+
+
+
+
+
+
+                      <!-- ADMIN NOTIFICATION-->
       
       <div id="adminNotificationSender" class="tab hidden px-4 pt-6 pb-24 max-w-4xl mx-auto">
   <h2 class="text-2xl font-bold mb-4 text-blue-700">Admin Notifications</h2>
@@ -189,4 +284,5 @@
   </script>
   <script src="admin.js"></script>
 </body>
+
 </html>

@@ -377,77 +377,530 @@ async function submitAdminJob() {
 
 
 
+  // Switch tabs (TikTok / WhatsApp / Telegram)
 
-function switchSocialTab(tab) {
-  document.querySelectorAll(".social-content").forEach(el => el.classList.add("hidden"));
-  document.getElementById(`social-${tab}`).classList.remove("hidden");
-  loadSubmissions(tab); // 🔑 Fetch from Firestore
-}
 
-// Load pending submissions
-async function loadSubmissions(tab) {
-  let collectionName = tab === "tiktok" ? "TiktokInstagram" : 
-                       tab === "whatsapp" ? "Whatsapp" : "Telegram";
-  const container = document.getElementById(`${tab}Submissions`);
-  container.innerHTML = `<p>Loading...</p>`;
+(function(){
+  /* ---------- CONFIG ---------- */
+  const COLLECTIONS = { tiktok: 'TiktokInstagram', whatsapp: 'Whatsapp', telegram: 'Telegram' };
+  const REWARD_AMOUNTS = { tiktok: 1000, whatsapp: 300, telegram: 300 };
 
-  const snapshot = await db.collection(collectionName).where("status", "==", "on review").get();
-  container.innerHTML = "";
+  // Firestore / Auth detection
+  let db = window.db || (window.firebase && window.firebase.firestore && window.firebase.firestore());
+  let auth = window.auth || (window.firebase && window.firebase.auth && window.firebase.auth());
+  const Timestamp = (window.firebase && window.firebase.firestore && window.firebase.firestore.Timestamp) || null;
+  const FieldValue = (window.firebase && window.firebase.firestore && window.firebase.firestore.FieldValue) || null;
 
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    const card = document.createElement("div");
-    card.className = "p-4 bg-white rounded-2xl shadow-lg";
-    card.innerHTML = `
-      <p><b>User:</b> ${data.submittedBy}</p>
-      ${data.username ? `<p><b>Username:</b> ${data.username}</p>` : ""}
-      ${data.profileLink ? `<p><b>Profile:</b> <a href="${data.profileLink}" target="_blank">${data.profileLink}</a></p>` : ""}
-      ${data.videoLink ? `<p><b>Video:</b> <a href="${data.videoLink}" target="_blank">${data.videoLink}</a></p>` : ""}
-      ${data.whatsappNumber ? `<p><b>WhatsApp:</b> ${data.whatsappNumber}</p>` : ""}
-      ${data.groupLinks ? `<p><b>Groups:</b> ${data.groupLinks.join(", ")}</p>` : ""}
-      <div class="flex gap-2 mt-2 overflow-x-auto">
-        ${(data.screenshot ? [data.screenshot] : data.proofs || []).map(url =>
-          `<img src="${url}" onclick="previewAsset('${url}')" class="w-20 h-20 object-cover rounded-lg cursor-pointer">`
-        ).join("")}
-      </div>
-      <p class="text-sm text-gray-500 mt-1">Submitted: ${data.submittedAt?.toDate().toLocaleString() || "N/A"}</p>
-      <div class="flex gap-2 mt-3">
-        <button onclick="updateStatus('${collectionName}','${doc.id}','accepted')" class="px-3 py-1 bg-green-500 text-white rounded-xl">Accept</button>
-        <button onclick="updateStatus('${collectionName}','${doc.id}','rejected')" class="px-3 py-1 bg-red-500 text-white rounded-xl">Reject</button>
-      </div>
-    `;
-    container.appendChild(card);
-  });
+  // State
+  const state = {
+    active: 'tiktok',
+    view: 'cards',
+    list: { tiktok: [], whatsapp: [], telegram: [] },
+    selected: new Set(),
+    previewIndex: 0,
+    previewUrls: [],
+    currentDoc: null
+  };
 
-  if (snapshot.empty) container.innerHTML = `<p class="text-gray-500">No pending submissions</p>`;
-}
+  // Elements
+  const el = (s) => document.querySelector(s);
+  const els = (s) => Array.from(document.querySelectorAll(s));
 
-// Update task status
-async function updateStatus(collection, docId, status) {
-  await db.collection(collection).doc(docId).update({ status });
-  alert(`✅ Task marked as ${status}`);
-  loadSubmissions(collection.toLowerCase()); // reload
-}
+  const refs = {
+    list: el('#st-list'),
+    search: el('#st-search'),
+    viewCards: el('#st-view-cards'),
+    viewTable: el('#st-view-table'),
+    tabs: els('.st-tab'),
+    kpiPending: el('#st-kpi-pending'),
+    kpiAcceptedToday: el('#st-kpi-accepted-today'),
+    kpiTotal: el('#st-kpi-total'),
+    bulkAccept: el('#st-bulk-accept'),
+    bulkReject: el('#st-bulk-reject'),
+    drawer: el('#st-drawer'),
+    drawerClose: el('#st-drawer-close'),
+    drawerUser: el('#st-drawer-user'),
+    drawerSub: el('#st-drawer-sub'),
+    drawerBadge: el('#st-drawer-badge'),
+    drawerImg: el('#st-drawer-img'),
+    drawerLinks: el('#st-drawer-links'),
+    drawerAccept: el('#st-drawer-accept'),
+    drawerReject: el('#st-drawer-reject'),
+    drawerRejectConfirm: el('#st-drawer-reject-confirm'),
+    drawerRejectCancel: el('#st-drawer-reject-cancel'),
+    drawerReasonWrap: el('#st-drawer-reason-wrap'),
+    drawerReason: el('#st-drawer-reason'),
+    carouselNext: el('#st-carousel-next'),
+    carouselPrev: el('#st-carousel-prev'),
+    recordsBtn: el('#st-open-records'),
+    recordsModal: el('#st-records-modal'),
+    recordsClose: el('#st-records-close'),
+    recordsContent: el('#st-records-content'),
+    recordsExport: el('#st-records-export'),
+    toast: el('#st-toast'),
+    refreshBtn: el('#st-refresh'),
+    filterSelect: el('#st-filter')
+  };
 
-// View Records
-async function viewRecords(collectionName) {
-  const snapshot = await db.collection(collectionName).where("status", "!=", "on review").get();
-  let html = `<h2 class="text-xl font-bold mb-4">📜 ${collectionName} Records</h2>`;
-  snapshot.forEach(doc => {
-    const d = doc.data();
-    html += `
-      <div class="p-4 bg-gray-50 rounded-xl mb-2 shadow">
-        <p><b>User:</b> ${d.submittedBy}</p>
-        <p><b>Status:</b> <span class="${d.status==="accepted"?"text-green-600":"text-red-600"}">${d.status}</span></p>
-        <p><b>Date:</b> ${d.submittedAt?.toDate().toLocaleString() || "N/A"}</p>
-      </div>
-    `;
-  });
-  // show in modal
-  document.getElementById("recordsModalContent").innerHTML = html;
-  document.getElementById("recordsModal").classList.remove("hidden");
+  /* ---------- HELPERS ---------- */
+  function toast(msg, type='success'){
+    refs.toast.textContent = msg;
+    refs.toast.className = `fixed bottom-6 right-6 p-3 rounded-lg shadow-lg ${type==='error'?'bg-red-600 text-white':'bg-sky-600 text-white'}`;
+    refs.toast.classList.remove('hidden');
+    setTimeout(()=> refs.toast.classList.add('hidden'), 3000);
   }
 
+  // safe date conversion
+  function tsToStr(ts){
+    if (!ts) return 'N/A';
+    if (ts.toDate) return ts.toDate().toLocaleString();
+    try { return new Date(ts).toLocaleString(); } catch(e){ return String(ts); }
+  }
+
+  // Security: sanitize basic output (not intended as full XSS protection)
+  function esc(s){ if (!s && s !== 0) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+  /* ---------- FIRESTORE OPERATIONS ---------- */
+
+  // subscribe to realtime lists for all collections (server-driven)
+  const unsubscribers = {};
+  function startRealtime(){
+    if (!db) { console.warn('Firestore not detected; call startSocialTasksAdmin() after Firebase init'); return; }
+
+    Object.entries(COLLECTIONS).forEach(([key, colName]) => {
+      try {
+        unsubscribers[key] = db.collection(colName).orderBy('submittedAt','desc')
+          .onSnapshot(snap => {
+            const arr = [];
+            snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+            state.list[key] = arr;
+            updateKPIs(); // refresh counts
+            if (key === state.active) renderList();
+          }, err => console.error('snap err', err));
+      } catch (e) {
+        console.error('subscribe error', e);
+      }
+    });
+  }
+
+  // KPI counts
+  async function updateKPIs(){
+    // Pending across all collections
+    try {
+      let pendingTotal = 0;
+      let totalProcessed = 0;
+      let acceptedToday = 0;
+      // quick compute from loaded state (cheap, realtime)
+      Object.keys(state.list).forEach(k => {
+        pendingTotal += state.list[k].filter(it => (it.status||'on review') === 'on review' || (it.status||'') === 'pending').length;
+        totalProcessed += state.list[k].filter(it => (it.status||'') === 'accepted' || (it.status||'') === 'rejected').length;
+        acceptedToday += state.list[k].filter(it => (it.status||'') === 'accepted' && (() => {
+          if (!it.reviewedAt) return false;
+          const d = (it.reviewedAt.toDate?it.reviewedAt.toDate():new Date(it.reviewedAt));
+          const now = new Date(); const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          return d >= start;
+        })()).length;
+      });
+
+      refs.kpiPending.textContent = pendingTotal;
+      refs.kpiAcceptedToday.textContent = acceptedToday;
+      refs.kpiTotal.textContent = totalProcessed;
+    } catch(e){ console.warn(e); }
+  }
+
+  /* ---------- RENDERING ---------- */
+
+  function renderList(){
+    const tab = state.active;
+    const raw = state.list[tab] || [];
+    const query = refs.search.value.trim().toLowerCase();
+    const filter = refs.filterSelect.value;
+
+    // filter & search
+    let rows = raw.filter(r => {
+      const st = (r.status||'on review');
+      if (filter !== 'all' && st !== filter) return false;
+      if (!query) return true;
+      return (r.username||'').toLowerCase().includes(query)
+        || (r.submittedBy||'').toLowerCase().includes(query)
+        || (r.profileLink||'').toLowerCase().includes(query)
+        || (r.videoLink||'').toLowerCase().includes(query)
+        || (r.whatsappNumber||'').toLowerCase().includes(query)
+        || (r.groupLinks||[]).join(' ').toLowerCase().includes(query);
+    });
+
+    // sort: pending first
+    rows.sort((a,b) => {
+      const sa = a.status || 'on review', sb = b.status || 'on review';
+      if (sa === sb) return (b.submittedAt?.seconds||0) - (a.submittedAt?.seconds||0);
+      if (sa === 'on review') return -1;
+      if (sb === 'on review') return 1;
+      return 0;
+    });
+
+    // render cards (or table; here we do cards)
+    refs.list.innerHTML = '';
+    if (!rows.length) {
+      refs.list.innerHTML = `<div class="p-6 rounded-xl bg-white/60 text-center st-card">No submissions match the current filters</div>`;
+      return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'grid gap-6 st-grid-cols';
+    // responsive: 1 column mobile, 2 on md, 2 on lg
+    grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(320px, 1fr))';
+
+    rows.forEach(doc => {
+      const card = document.createElement('article');
+      card.className = 'st-card p-5 st-scale st-slide';
+
+      // avatar (if user exists), fallback to initials
+      const initials = (doc.username || doc.submittedBy || 'U').slice(0,1).toUpperCase();
+      const status = (doc.status || 'on review').toLowerCase();
+
+      const imgs = doc.screenshot ? [doc.screenshot] : (doc.proofs || []);
+      const previewThumbs = imgs.map(u => `<img src="${u}" class="w-20 h-20 object-cover rounded-md cursor-pointer" data-url="${u}" />`).join('');
+
+      card.innerHTML = `
+        <div class="flex items-start gap-4">
+          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-slate-100 to-white flex items-center justify-center text-lg font-bold">${esc(initials)}</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-semibold">${esc(doc.username || doc.submittedBy || 'Unknown')}</h3>
+                <div class="text-xs st-small-muted mt-1">${esc((doc.platform||tab).toUpperCase())} • ${tsToStr(doc.submittedAt)}</div>
+              </div>
+              <div><span class="st-badge ${status==='accepted'?'st-badge-accepted':status==='rejected'?'st-badge-rejected':'st-badge-pending'}">${status.toUpperCase()}</span></div>
+            </div>
+
+            <div class="mt-3 text-sm text-slate-700">${doc.profileLink?`<div>Profile: <a target="_blank" class="text-sky-600 underline" href="${esc(doc.profileLink)}">${esc(doc.profileLink)}</a></div>`:''}
+              ${doc.videoLink?`<div>Video: <a target="_blank" class="text-sky-600 underline" href="${esc(doc.videoLink)}">${esc(doc.videoLink)}</a></div>`:''}
+              ${doc.whatsappNumber?`<div>WhatsApp: ${esc(doc.whatsappNumber)}</div>`:''}
+            </div>
+
+            <div class="mt-4 flex gap-3 items-center">
+              ${previewThumbs || '<div class="text-slate-400">No screenshots</div>'}
+            </div>
+
+            <div class="mt-4 flex items-center gap-3">
+              <button class="px-3 py-2 rounded-md st-btn-accept btn-accept" data-id="${doc.id}">Accept</button>
+              <button class="px-3 py-2 rounded-md st-btn-reject btn-reject" data-id="${doc.id}">Reject</button>
+              <button class="px-3 py-2 rounded-md bg-white/80 text-sm border ml-auto btn-open" data-id="${doc.id}">Open</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // attach event delegation after insert
+      grid.appendChild(card);
+    });
+
+    refs.list.appendChild(grid);
+
+    // Hook thumbnails & action buttons
+    refs.list.querySelectorAll('[data-url]').forEach(img => {
+      img.addEventListener('click', (e) => {
+        openDrawerByDocUrl(e.target.dataset.url);
+      });
+    });
+
+    refs.list.querySelectorAll('.btn-open').forEach(b => {
+      b.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        const doc = rows.find(r=>r.id===id);
+        if (doc) openDrawer(doc);
+      });
+    });
+    refs.list.querySelectorAll('.btn-accept').forEach(b => {
+      b.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        const doc = rows.find(r=>r.id===id);
+        if (!doc) return;
+        confirmAccept(doc);
+      });
+    });
+    refs.list.querySelectorAll('.btn-reject').forEach(b => {
+      b.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        const doc = rows.find(r=>r.id===id);
+        if (!doc) return;
+        promptReject(doc);
+      });
+    });
+  }
+
+  /* ---------- DETAIL DRAWER ---------- */
+
+  function openDrawer(doc){
+    state.currentDoc = doc;
+    state.previewIndex = 0;
+    state.previewUrls = doc.screenshot ? [doc.screenshot] : (doc.proofs || []);
+    refs.drawer.classList.add('open');
+    refs.drawerUser.textContent = doc.username || doc.submittedBy || 'Unknown user';
+    refs.drawerSub.textContent = `${(doc.platform||state.active).toUpperCase()} • ${tsToStr(doc.submittedAt)}`;
+    refs.drawerBadge.className = 'st-badge ' + ((doc.status==='accepted')?'st-badge-accepted':(doc.status==='rejected')?'st-badge-rejected':'st-badge-pending');
+    refs.drawerLinks.innerHTML = `
+      ${doc.profileLink?`<div>Profile: <a class="text-sky-600 underline" target="_blank" href="${esc(doc.profileLink)}">${esc(doc.profileLink)}</a></div>`:''}
+      ${doc.videoLink?`<div>Video: <a class="text-sky-600 underline" target="_blank" href="${esc(doc.videoLink)}">${esc(doc.videoLink)}</a></div>`:''}
+      ${doc.whatsappNumber?`<div>WhatsApp: ${esc(doc.whatsappNumber)}</div>`:''}
+      ${doc.groupLinks?`<div>Groups: ${esc((doc.groupLinks||[]).join(', '))}</div>`:''}
+      <div class="text-xs st-small-muted mt-2">Submitted by: ${esc(doc.submittedBy || doc.userId || 'N/A')}</div>
+    `;
+    // image
+    refs.drawerImg.src = state.previewUrls[state.previewIndex] || '';
+    refs.drawerImg.alt = `Proof ${state.previewIndex+1}`;
+    refs.drawerReasonWrap.classList.add('hidden');
+  }
+
+  function closeDrawer(){
+    refs.drawer.classList.remove('open');
+    state.currentDoc = null;
+  }
+
+  refs.drawerClose.addEventListener('click', closeDrawer);
+  refs.carouselNext.addEventListener('click', ()=>{ if (!state.previewUrls.length) return; state.previewIndex = (state.previewIndex+1) % state.previewUrls.length; refs.drawerImg.src = state.previewUrls[state.previewIndex]; });
+  refs.carouselPrev.addEventListener('click', ()=>{ if (!state.previewUrls.length) return; state.previewIndex = (state.previewIndex-1 + state.previewUrls.length) % state.previewUrls.length; refs.drawerImg.src = state.previewUrls[state.previewIndex]; });
+
+  refs.drawerReject.addEventListener('click', ()=>{ refs.drawerReasonWrap.classList.remove('hidden'); });
+  refs.drawerRejectCancel.addEventListener('click', ()=>{ refs.drawerReasonWrap.classList.add('hidden'); refs.drawerReason.value = ''; });
+
+  refs.drawerRejectConfirm.addEventListener('click', async ()=>{
+    const reason = refs.drawerReason.value.trim();
+    if (!state.currentDoc) return;
+    await rejectSubmission(state.currentDoc, reason);
+    closeDrawer();
+  });
+
+  refs.drawerAccept.addEventListener('click', async ()=>{
+    if (!state.currentDoc) return;
+    await acceptAndReward(state.currentDoc);
+    closeDrawer();
+  });
+
+  /* ---------- ACCEPT / REJECT LOGIC (transaction-safe) ---------- */
+
+  async function acceptAndReward(doc){
+    if (!db) { toast('Firestore not initialized','error'); return; }
+    const colKey = (doc.platform || state.active) === 'Whatsapp' || (doc.platform||'').toLowerCase() === 'whatsapp' ? 'whatsapp'
+                  : (doc.platform || state.active) === 'Telegram' || (doc.platform||'').toLowerCase() === 'telegram' ? 'telegram'
+                  : 'tiktok';
+    const amount = REWARD_AMOUNTS[colKey] || 0;
+    const collectionName = COLLECTIONS[colKey];
+    const docRef = db.collection(collectionName).doc(doc.id);
+
+    try {
+      if (db.runTransaction) {
+        await db.runTransaction(async (t) => {
+          const ds = await t.get(docRef);
+          if (!ds.exists) throw new Error('Submission missing');
+          const data = ds.data();
+          if (data.rewarded) {
+            toast('Already rewarded', 'error'); return;
+          }
+
+          const userId = data.submittedBy || data.userId || data.uid;
+          if (!userId) {
+            // mark accepted but couldn't credit
+            t.update(docRef, { status: 'accepted', reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true });
+            toast(`Marked accepted (no user found)`); return;
+          }
+
+          // try both users / Users
+          let userRef = db.collection('users').doc(userId);
+          let userSnap = await t.get(userRef);
+          if (!userSnap.exists) { userRef = db.collection('Users').doc(userId); userSnap = await t.get(userRef); }
+
+          if (!userSnap.exists) {
+            t.update(docRef, { status: 'accepted', reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true });
+            toast('User not found; accepted but not credited', 'error'); return;
+          }
+
+          const current = (userSnap.data().balance || 0);
+          t.update(userRef, { balance: current + amount });
+
+          const txRef = db.collection('Transactions').doc();
+          t.set(txRef, {
+            userId,
+            amount,
+            currency: 'NGN',
+            type: 'social_task_reward',
+            source: collectionName,
+            taskDocId: doc.id,
+            createdAt: FieldValue ? FieldValue.serverTimestamp() : new Date()
+          });
+
+          t.update(docRef, {
+            status: 'accepted',
+            reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin',
+            reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(),
+            rewarded: true,
+            rewardAmount: amount,
+            rewardedAt: FieldValue ? FieldValue.serverTimestamp() : new Date()
+          });
+        });
+      } else {
+        // fallback non-transactional
+        const ds = await docRef.get();
+        if (!ds.exists) throw new Error('Submission missing');
+        const data = ds.data();
+        if (data.rewarded) { toast('Already rewarded', 'error'); return; }
+        const userId = data.submittedBy || data.userId || data.uid;
+        if (!userId) {
+          await docRef.update({ status:'accepted', reviewedBy:(auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true });
+          toast('Accepted but no user found', 'error'); return;
+        }
+        let userRef = db.collection('users').doc(userId);
+        let userSnap = await userRef.get();
+        if (!userSnap.exists) { userRef = db.collection('Users').doc(userId); userSnap = await userRef.get(); }
+        if (!userSnap.exists) { await docRef.update({ status:'accepted', reviewedBy:(auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true }); toast('User not found', 'error'); return; }
+        const current = (userSnap.data().balance || 0);
+        await userRef.update({ balance: current + amount });
+        await db.collection('Transactions').add({ userId, amount, currency:'NGN', type:'social_task_reward', source:collectionName, taskDocId:doc.id, createdAt: FieldValue ? FieldValue.serverTimestamp() : new Date() });
+        await docRef.update({ status:'accepted', reviewedBy:(auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewarded:true, rewardAmount:amount, rewardedAt: FieldValue ? FieldValue.serverTimestamp() : new Date() });
+      }
+
+      toast(`User credited ₦${amount}`);
+    } catch (err) {
+      console.error('accept error', err);
+      toast('Failed to accept & reward (check console)', 'error');
+    }
+  }
+
+  async function rejectSubmissionManual(doc, reason){
+    if (!db) { toast('Firestore not initialized','error'); return; }
+    const col = (doc.platform||state.active).toLowerCase().includes('whatsapp') ? 'Whatsapp' : (doc.platform||state.active).toLowerCase().includes('telegram') ? 'Telegram' : 'TiktokInstagram';
+    try {
+      await db.collection(col).doc(doc.id).update({
+        status: 'rejected',
+        reviewReason: reason || '',
+        reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin',
+        reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date()
+      });
+      // also log into taskHistory or leave as record in the same collection
+      toast('Submission rejected');
+    } catch(e){
+      console.error('reject error', e);
+      toast('Failed to reject', 'error');
+    }
+  }
+
+  /* ---------- UI ACTIONS ---------- */
+
+  function confirmAccept(doc){
+    // simple confirm
+    const ok = confirm(`Accept this submission and credit the user ₦${REWARD_AMOUNTS[(doc.platform||state.active).toLowerCase().includes('whatsapp')?'whatsapp':(doc.platform||state.active).toLowerCase().includes('telegram')?'telegram':'tiktok']} ?`);
+    if (!ok) return;
+    acceptAndReward(doc);
+  }
+
+  function promptReject(doc){
+    const reason = prompt('Enter rejection reason (optional):');
+    if (reason === null) return;
+    rejectSubmissionManual(doc, reason);
+  }
+
+  /* ---------- RECORDS PANEL ---------- */
+
+  function openRecords(){
+    refs.recordsModal.classList.remove('hidden');
+    loadRecords();
+  }
+  function closeRecords(){ refs.recordsModal.classList.add('hidden'); }
+  refs.recordsClose.addEventListener('click', closeRecords);
+  refs.recordsBtn.addEventListener('click', openRecords);
+
+  async function loadRecords(){
+    if (!db) return;
+    refs.recordsContent.innerHTML = '<div class="text-slate-500 p-4">Loading records…</div>';
+    try {
+      // load accepted & rejected across collections (latest 100)
+      const rows = [];
+      for (const [k, col] of Object.entries(COLLECTIONS)){
+        const snap = await db.collection(col).where('status','in',['accepted','rejected']).orderBy('reviewedAt','desc').limit(60).get();
+        snap.forEach(d => rows.push({ id: d.id, collection: col, ...d.data() }));
+      }
+      // sort by reviewedAt
+      rows.sort((a,b)=> (b.reviewedAt?.seconds||0) - (a.reviewedAt?.seconds||0));
+      if (!rows.length) { refs.recordsContent.innerHTML = '<div class="text-slate-500 p-4">No records yet.</div>'; return; }
+
+      refs.recordsContent.innerHTML = rows.map(r => {
+        const sclass = r.status==='accepted' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700';
+        const amount = r.rewardAmount ? `+₦${r.rewardAmount}` : '';
+        return `<div class="p-3 st-card"><div class="flex justify-between items-center gap-4">
+          <div><div class="font-semibold">${esc(r.username||r.submittedBy||'User')}</div><div class="text-xs st-small-muted">${tsToStr(r.reviewedAt)} • ${esc(r.collection)}</div></div>
+          <div class="text-right">
+            <div class="${sclass} st-badge">${esc(r.status?.toUpperCase()||'')}</div>
+            <div class="text-sm mt-2">${amount}${r.reviewReason?`<div class="text-xs text-slate-500 mt-1">Reason: ${esc(r.reviewReason)}</div>`:''}</div>
+          </div>
+        </div></div>`;
+      }).join('');
+    } catch (e) {
+      console.error('loadRecords error', e);
+      refs.recordsContent.innerHTML = '<div class="text-red-500 p-4">Failed to load records</div>';
+    }
+  }
+
+  // CSV export simple
+  refs.recordsExport.addEventListener('click', async ()=>{
+    if (!db) return toast('DB not ready','error');
+    const rows = [];
+    for (const col of Object.values(COLLECTIONS)){
+      const snap = await db.collection(col).where('status','in',['accepted','rejected']).orderBy('reviewedAt','desc').limit(200).get();
+      snap.forEach(d => rows.push({ id: d.id, collection: col, ...d.data() }));
+    }
+    if (!rows.length) return toast('No rows to export','error');
+    const header = ['id','collection','username','submittedBy','status','rewardAmount','reviewReason','reviewedAt'].join(',');
+    const csv = [header].concat(rows.map(r => {
+      const vals = [r.id, r.collection, (r.username||''), (r.submittedBy||''), (r.status||''), (r.rewardAmount||''), (r.reviewReason||''), (r.reviewedAt && r.reviewedAt.toDate? r.reviewedAt.toDate().toISOString() : '')];
+      return vals.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',');
+    })).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `social_records_${new Date().toISOString().slice(0,19)}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    toast('CSV export started');
+  });
+
+  /* ---------- UI wiring ---------- */
+
+  // Tabs
+  refs.tabs.forEach(btn => btn.addEventListener('click', ()=>{
+    refs.tabs.forEach(b=>b.classList.remove('active','text-white')); btn.classList.add('active','text-white');
+    const tab = btn.dataset.tab; state.active = tab; renderList();
+  }));
+
+  // search debounce
+  let sd;
+  refs.search.addEventListener('input', (e)=>{ clearTimeout(sd); sd = setTimeout(()=>renderList(), 250); });
+
+  // view toggle
+  refs.viewCards.addEventListener('click', ()=>{ state.view='cards'; renderList(); });
+  refs.viewTable.addEventListener('click', ()=>{ state.view='table'; renderList(); });
+
+  // refresh
+  refs.refreshBtn && refs.refreshBtn.addEventListener('click', ()=>{ renderList(); toast('Refreshed'); });
+
+  // bulk actions (placeholder wiring: selection UI not implemented in this version but buttons are ready)
+  refs.bulkAccept.addEventListener('click', ()=>{ if (!confirm('Bulk accept selected?')) return; /* bulk logic can be added */ });
+  refs.bulkReject.addEventListener('click', ()=>{ if (!confirm('Bulk reject selected?')) return; /* bulk logic can be added */ });
+
+  /* ---------- START / INIT ---------- */
+
+  function startSocialTasksAdmin(){
+    // re-evaluate db/auth if they were set later
+    db = window.db || (window.firebase && window.firebase.firestore && window.firebase.firestore());
+    auth = window.auth || (window.firebase && window.firebase.auth && window.firebase.auth());
+    startRealtime();
+    // initial tab
+    renderList();
+    toast('Social Tasks Admin started');
+  }
+
+  // Expose for manual start
+  window.startSocialTasksAdmin = startSocialTasksAdmin;
+
+  // Auto-start if Firestore present
+  if (db) startSocialTasksAdmin();
+
+})();
 
 
 
@@ -607,3 +1060,4 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+

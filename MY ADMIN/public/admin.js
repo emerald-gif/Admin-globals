@@ -679,110 +679,77 @@ async function submitAdminJob() {
 
   /* ---------- ACCEPT / REJECT LOGIC (transaction-safe) ---------- */
 
-  async function acceptAndReward(doc){
-    if (!db) { toast('Firestore not initialized','error'); return; }
-    const colKey = (doc.platform || state.active) === 'Whatsapp' || (doc.platform||'').toLowerCase() === 'whatsapp' ? 'whatsapp'
-                  : (doc.platform || state.active) === 'Telegram' || (doc.platform||'').toLowerCase() === 'telegram' ? 'telegram'
-                  : 'tiktok';
-    const amount = REWARD_AMOUNTS[colKey] || 0;
-    const collectionName = COLLECTIONS[colKey];
-    const docRef = db.collection(collectionName).doc(doc.id);
+  /* ---------- ACCEPT / REJECT LOGIC (transaction-safe) ---------- */
 
-    try {
-      if (db.runTransaction) {
-        await db.runTransaction(async (t) => {
-          const ds = await t.get(docRef);
-          if (!ds.exists) throw new Error('Submission missing');
-          const data = ds.data();
-          if (data.rewarded) {
-            toast('Already rewarded', 'error'); return;
-          }
+async function acceptAndReward(doc){
+  if (!db) { toast('Firestore not initialized','error'); return; }
 
-          const userId = data.submittedBy || data.userId || data.uid;
-          if (!userId) {
-            // mark accepted but couldn't credit
-            t.update(docRef, { status: 'accepted', reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true });
-            toast(`Marked accepted (no user found)`); return;
-          }
+  // normalize collection key
+  const colKey = (doc.platform || state.active).toLowerCase();
+  const collectionName = 
+    colKey.includes('whatsapp') ? COLLECTIONS.whatsapp :
+    colKey.includes('telegram') ? COLLECTIONS.telegram :
+    COLLECTIONS.tiktok;
+  const amount = 
+    colKey.includes('whatsapp') ? REWARD_AMOUNTS.whatsapp :
+    colKey.includes('telegram') ? REWARD_AMOUNTS.telegram :
+    REWARD_AMOUNTS.tiktok;
 
-          // try both users / Users
-          let userRef = db.collection('users').doc(userId);
-          let userSnap = await t.get(userRef);
-          if (!userSnap.exists) { userRef = db.collection('Users').doc(userId); userSnap = await t.get(userRef); }
+  const docRef = db.collection(collectionName).doc(doc.id);
 
-          if (!userSnap.exists) {
-            t.update(docRef, { status: 'accepted', reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true });
-            toast('User not found; accepted but not credited', 'error'); return;
-          }
+  try {
+    await db.runTransaction(async (t) => {
+      const ds = await t.get(docRef);
+      if (!ds.exists) throw new Error('Submission missing');
+      const data = ds.data();
 
-          const current = (userSnap.data().balance || 0);
-          t.update(userRef, { balance: current + amount });
+      if (data.status === 'accepted') throw new Error('Already accepted');
+      if (data.status === 'rejected') throw new Error('Already rejected');
 
-          const txRef = db.collection('Transactions').doc();
-          t.set(txRef, {
-            userId,
-            amount,
-            currency: 'NGN',
-            type: 'social_task_reward',
-            source: collectionName,
-            taskDocId: doc.id,
-            createdAt: FieldValue ? FieldValue.serverTimestamp() : new Date()
-          });
+      const userId = data.submittedBy || data.userId || data.uid;
+      if (!userId) throw new Error('No user ID found in submission');
 
-          t.update(docRef, {
-            status: 'accepted',
-            reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin',
-            reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(),
-            rewarded: true,
-            rewardAmount: amount,
-            rewardedAt: FieldValue ? FieldValue.serverTimestamp() : new Date()
-          });
-        });
-      } else {
-        // fallback non-transactional
-        const ds = await docRef.get();
-        if (!ds.exists) throw new Error('Submission missing');
-        const data = ds.data();
-        if (data.rewarded) { toast('Already rewarded', 'error'); return; }
-        const userId = data.submittedBy || data.userId || data.uid;
-        if (!userId) {
-          await docRef.update({ status:'accepted', reviewedBy:(auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true });
-          toast('Accepted but no user found', 'error'); return;
-        }
-        let userRef = db.collection('users').doc(userId);
-        let userSnap = await userRef.get();
-        if (!userSnap.exists) { userRef = db.collection('Users').doc(userId); userSnap = await userRef.get(); }
-        if (!userSnap.exists) { await docRef.update({ status:'accepted', reviewedBy:(auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewardAttempted: true }); toast('User not found', 'error'); return; }
-        const current = (userSnap.data().balance || 0);
-        await userRef.update({ balance: current + amount });
-        await db.collection('Transactions').add({ userId, amount, currency:'NGN', type:'social_task_reward', source:collectionName, taskDocId:doc.id, createdAt: FieldValue ? FieldValue.serverTimestamp() : new Date() });
-        await docRef.update({ status:'accepted', reviewedBy:(auth && auth.currentUser && auth.currentUser.uid) || 'admin', reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date(), rewarded:true, rewardAmount:amount, rewardedAt: FieldValue ? FieldValue.serverTimestamp() : new Date() });
-      }
-
-      toast(`User credited ₦${amount}`);
-    } catch (err) {
-      console.error('accept error', err);
-      toast('Failed to accept & reward (check console)', 'error');
-    }
-  }
-
-  async function rejectSubmissionManual(doc, reason){
-    if (!db) { toast('Firestore not initialized','error'); return; }
-    const col = (doc.platform||state.active).toLowerCase().includes('whatsapp') ? 'Whatsapp' : (doc.platform||state.active).toLowerCase().includes('telegram') ? 'Telegram' : 'TiktokInstagram';
-    try {
-      await db.collection(col).doc(doc.id).update({
-        status: 'rejected',
-        reviewReason: reason || '',
-        reviewedBy: (auth && auth.currentUser && auth.currentUser.uid) || 'admin',
-        reviewedAt: FieldValue ? FieldValue.serverTimestamp() : new Date()
+      // mark submission
+      t.update(docRef, {
+        status: 'accepted',
+        rewarded: true,
+        reviewedAt: FieldValue.serverTimestamp()
       });
-      // also log into taskHistory or leave as record in the same collection
-      toast('Submission rejected');
-    } catch(e){
-      console.error('reject error', e);
-      toast('Failed to reject', 'error');
-    }
+
+      // increment user balance
+      const userRef = db.collection('users').doc(userId);
+      t.set(userRef, { balance: FieldValue.increment(amount) }, { merge: true });
+    });
+
+    toast(`✅ Accepted & credited ${amount}`, 'success');
+  } catch(e){
+    console.error(e);
+    toast(`❌ ${e.message || 'Failed to accept'}`, 'error');
   }
+}
+
+async function rejectSubmission(doc, reason=''){
+  if (!db) { toast('Firestore not initialized','error'); return; }
+
+  const colKey = (doc.platform || state.active).toLowerCase();
+  const collectionName = 
+    colKey.includes('whatsapp') ? COLLECTIONS.whatsapp :
+    colKey.includes('telegram') ? COLLECTIONS.telegram :
+    COLLECTIONS.tiktok;
+  const docRef = db.collection(collectionName).doc(doc.id);
+
+  try {
+    await docRef.update({
+      status: 'rejected',
+      reviewedAt: FieldValue.serverTimestamp(),
+      rejectionReason: reason || null
+    });
+    toast('❌ Rejected submission', 'error');
+  } catch(e){
+    console.error(e);
+    toast('❌ Failed to reject', 'error');
+  }
+}
 
   /* ---------- UI ACTIONS ---------- */
 
@@ -1060,4 +1027,5 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 

@@ -369,6 +369,93 @@ async function submitAdminJob() {
 
 
 
+
+
+
+
+                       // Switch tabs (TikTok / WhatsApp / Telegram)
+
+
+
+
+function switchSocialTab(tab) {
+  document.querySelectorAll(".social-content").forEach(el => el.classList.add("hidden"));
+  document.getElementById(`social-${tab}`).classList.remove("hidden");
+  loadSubmissions(tab); // 🔑 Fetch from Firestore
+}
+
+// Load pending submissions
+async function loadSubmissions(tab) {
+  let collectionName = tab === "tiktok" ? "TiktokInstagram" : 
+                       tab === "whatsapp" ? "Whatsapp" : "Telegram";
+  const container = document.getElementById(`${tab}Submissions`);
+  container.innerHTML = `<p>Loading...</p>`;
+
+  const snapshot = await db.collection(collectionName).where("status", "==", "on review").get();
+  container.innerHTML = "";
+
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    const card = document.createElement("div");
+    card.className = "p-4 bg-white rounded-2xl shadow-lg";
+    card.innerHTML = `
+      <p><b>User:</b> ${data.submittedBy}</p>
+      ${data.username ? `<p><b>Username:</b> ${data.username}</p>` : ""}
+      ${data.profileLink ? `<p><b>Profile:</b> <a href="${data.profileLink}" target="_blank">${data.profileLink}</a></p>` : ""}
+      ${data.videoLink ? `<p><b>Video:</b> <a href="${data.videoLink}" target="_blank">${data.videoLink}</a></p>` : ""}
+      ${data.whatsappNumber ? `<p><b>WhatsApp:</b> ${data.whatsappNumber}</p>` : ""}
+      ${data.groupLinks ? `<p><b>Groups:</b> ${data.groupLinks.join(", ")}</p>` : ""}
+      <div class="flex gap-2 mt-2 overflow-x-auto">
+        ${(data.screenshot ? [data.screenshot] : data.proofs || []).map(url =>
+          `<img src="${url}" onclick="previewAsset('${url}')" class="w-20 h-20 object-cover rounded-lg cursor-pointer">`
+        ).join("")}
+      </div>
+      <p class="text-sm text-gray-500 mt-1">Submitted: ${data.submittedAt?.toDate().toLocaleString() || "N/A"}</p>
+      <div class="flex gap-2 mt-3">
+        <button onclick="updateStatus('${collectionName}','${doc.id}','accepted')" class="px-3 py-1 bg-green-500 text-white rounded-xl">Accept</button>
+        <button onclick="updateStatus('${collectionName}','${doc.id}','rejected')" class="px-3 py-1 bg-red-500 text-white rounded-xl">Reject</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  if (snapshot.empty) container.innerHTML = `<p class="text-gray-500">No pending submissions</p>`;
+}
+
+// Update task status
+async function updateStatus(collection, docId, status) {
+  await db.collection(collection).doc(docId).update({ status });
+  alert(`✅ Task marked as ${status}`);
+  loadSubmissions(collection.toLowerCase()); // reload
+}
+
+// View Records
+async function viewRecords(collectionName) {
+  const snapshot = await db.collection(collectionName).where("status", "!=", "on review").get();
+  let html = `<h2 class="text-xl font-bold mb-4">📜 ${collectionName} Records</h2>`;
+  snapshot.forEach(doc => {
+    const d = doc.data();
+    html += `
+      <div class="p-4 bg-gray-50 rounded-xl mb-2 shadow">
+        <p><b>User:</b> ${d.submittedBy}</p>
+        <p><b>Status:</b> <span class="${d.status==="accepted"?"text-green-600":"text-red-600"}">${d.status}</span></p>
+        <p><b>Date:</b> ${d.submittedAt?.toDate().toLocaleString() || "N/A"}</p>
+      </div>
+    `;
+  });
+  // show in modal
+  document.getElementById("recordsModalContent").innerHTML = html;
+  document.getElementById("recordsModal").classList.remove("hidden");
+  }
+
+
+
+
+
+
+
+
+
 // --- Load Withdrawals ---
 async function loadWithdrawals() {
   const snap = await db.collection('withdrawals').get();
@@ -518,4 +605,5 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchPendingJobsForAdmin();
   loadWithdrawals();
   loadTaskSubmissions();
+
 });

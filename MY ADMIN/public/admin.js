@@ -877,6 +877,7 @@ async function rejectSubmission(doc, reason=''){
   // REFERRAL FUNCTION 
 
 
+
 document.addEventListener("DOMContentLoaded", async () => {
   const db = firebase.firestore();
 
@@ -887,84 +888,178 @@ document.addEventListener("DOMContentLoaded", async () => {
   const leaderboardBody = document.getElementById("leaderboardBody");
   const chartNote = document.getElementById("chartNote");
 
-  // Load stats
-  async function loadKPIs() {
-    const usersSnap = await db.collection("users").get();
-    const users = usersSnap.docs.map(d => ({id: d.id, ...d.data()}));
+  // ==============================
+  //  Load all users from Firestore
+  // ==============================
+  async function loadUsers() {
+    const snap = await db.collection("users").get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
 
+  // ==============================
+  //  KPIs
+  // ==============================
+  function loadKPIs(users) {
     const totalUsers = users.length;
+
     const referrals = users.filter(u => u.referredBy).length;
     const premium = users.filter(u => u.is_Premium).length;
-    const commission = premium * 1000; // demo value
+
+    // Commission = count of premium referrals × 500
+    const commission = users.filter(u => u.referredBy && u.is_Premium).length * 500;
 
     kpiTotalUsers.textContent = totalUsers;
     kpiTotalReferrals.textContent = referrals;
     kpiPremium.textContent = premium;
     kpiCommission.textContent = "₦" + commission.toLocaleString();
-
-    return users;
   }
 
-  // Leaderboard
+  // ==============================
+  //  Leaderboard (Top Referrers)
+  // ==============================
   function buildLeaderboard(users) {
-    const refCount = {};
+    const refCounts = {};
+
     users.forEach(u => {
-      if (u.referredBy) {
-        refCount[u.referredBy] = (refCount[u.referredBy] || 0) + 1;
+      if (u.referredBy && u.is_Premium) {
+        refCounts[u.referredBy] = (refCounts[u.referredBy] || 0) + 1;
       }
     });
 
-    const top = Object.entries(refCount)
-      .map(([user, count]) => ({user, count, earnings: count * 1000}))
+    const top = Object.entries(refCounts)
+      .map(([uid, count]) => {
+        const referrer = users.find(x => x.id === uid);
+        return {
+          username: referrer?.username || "Unknown",
+          count,
+          earnings: count * 500
+        };
+      })
       .sort((a,b) => b.count - a.count)
       .slice(0,10);
 
     leaderboardBody.innerHTML = top.map(t => `
       <tr>
-        <td class="py-1 pr-2">${t.user}</td>
+        <td class="py-1 pr-2">@${t.username}</td>
         <td class="py-1 pr-2 text-right">${t.count}</td>
         <td class="py-1 text-right">₦${t.earnings.toLocaleString()}</td>
       </tr>`).join("");
   }
 
-  // Chart
+  // ==============================
+  //  Referral Trend (last 14 days)
+  // ==============================
   function buildChart(users) {
     const ctx = document.getElementById("trendChart").getContext("2d");
     const today = new Date();
+
     const labels = [];
     const counts = [];
 
     for (let i=13; i>=0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      const label = d.toISOString().slice(5,10);
+      const label = d.toISOString().slice(5,10); // MM-DD
       labels.push(label);
       counts.push(0);
     }
 
     users.forEach(u => {
       if (!u.joinedAt) return;
-      const d = u.joinedAt.toDate ? u.joinedAt.toDate() : new Date(u.joinedAt);
-      const label = d.toISOString().slice(5,10);
+      const joined = u.joinedAt.toDate ? u.joinedAt.toDate() : new Date(u.joinedAt);
+      const label = joined.toISOString().slice(5,10);
       const idx = labels.indexOf(label);
       if (idx !== -1) counts[idx]++;
     });
 
     new Chart(ctx, {
       type: "line",
-      data: { labels, datasets: [{ label:"New Users", data:counts, fill:true, borderColor:"#2563eb", backgroundColor:"rgba(37,99,235,0.15)" }] },
+      data: { 
+        labels, 
+        datasets: [{
+          label:"New Referrals",
+          data:counts,
+          fill:true,
+          borderColor:"#2563eb",
+          backgroundColor:"rgba(37,99,235,0.15)"
+        }] 
+      },
       options: { responsive:true, plugins:{ legend:{ display:false } } }
     });
 
     if (counts.every(c => c===0)) chartNote.classList.remove("hidden");
   }
 
-  const users = await loadKPIs();
+  // ==============================
+  //  User Explorer
+  // ==============================
+  function setupExplorer(users) {
+    const searchBtn = document.getElementById("searchBtn");
+    const searchInput = document.getElementById("searchUsername");
+
+    searchBtn.addEventListener("click", () => {
+      const username = searchInput.value.trim();
+      if (!username) return;
+
+      const user = users.find(u => u.username === username);
+      if (!user) return alert("User not found");
+
+      // Direct referrals
+      const directs = users.filter(u => u.referredBy === user.id);
+
+      // Second level referrals
+      const seconds = users.filter(u => directs.map(d => d.id).includes(u.referredBy));
+
+      // Earnings = premium directs × 500
+      const earnings = directs.filter(u => u.is_Premium).length * 500;
+
+      document.getElementById("uDirectCount").textContent = directs.length;
+      document.getElementById("uSecondCount").textContent = seconds.length;
+      document.getElementById("uEarnings").textContent = "₦" + earnings.toLocaleString();
+
+      document.getElementById("userRefLink").value = `${window.location.origin}/signup?ref=${user.id}`;
+      document.getElementById("userPanel").classList.remove("hidden");
+
+      // Render direct referrals list
+      const list = document.getElementById("uList");
+      list.innerHTML = "";
+      directs.forEach(d => {
+        const div = document.createElement("div");
+        div.className = "p-3 rounded-lg border";
+        div.textContent = `@${d.username}`;
+        list.appendChild(div);
+      });
+    });
+
+    // Copy referral link
+    document.getElementById("copyLinkBtn").addEventListener("click", () => {
+      const input = document.getElementById("userRefLink");
+      input.select();
+      document.execCommand("copy");
+      alert("Link copied!");
+    });
+
+    // Share referral link
+    document.getElementById("shareLinkBtn").addEventListener("click", () => {
+      const link = document.getElementById("userRefLink").value;
+      if (navigator.share) {
+        navigator.share({ title: "Join via my referral", url: link });
+      } else {
+        alert("Sharing not supported. Copy link instead.");
+      }
+    });
+  }
+
+  // ==============================
+  //  Init
+  // ==============================
+  const users = await loadUsers();
+  loadKPIs(users);
   buildLeaderboard(users);
   buildChart(users);
+  setupExplorer(users);
+
 });
-
-
 
 
 
@@ -1126,6 +1221,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 
 

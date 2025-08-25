@@ -878,34 +878,43 @@ async function rejectSubmission(doc, reason=''){
 
 
 
+
 document.addEventListener("DOMContentLoaded", async () => {
   const db = firebase.firestore();
 
+  // KPI Elements
   const kpiTotalUsers = document.getElementById("kpiTotalUsers");
   const kpiTotalReferrals = document.getElementById("kpiTotalReferrals");
   const kpiPremium = document.getElementById("kpiPremium");
   const kpiCommission = document.getElementById("kpiCommission");
+
+  // Other Elements
   const leaderboardBody = document.getElementById("leaderboardBody");
   const chartNote = document.getElementById("chartNote");
 
   // ==============================
-  //  Load all users from Firestore
+  // Load all users
   // ==============================
   async function loadUsers() {
     const snap = await db.collection("users").get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return snap.docs.map(d => ({
+      id: d.id,
+      username: d.data().username || "unknown",
+      referredBy: d.data().referredBy || null,
+      is_Premium: d.data().is_Premium || false,
+      joinedAt: d.data().joinedAt || null
+    }));
   }
 
   // ==============================
-  //  KPIs
+  // KPIs
   // ==============================
   function loadKPIs(users) {
     const totalUsers = users.length;
-
     const referrals = users.filter(u => u.referredBy).length;
     const premium = users.filter(u => u.is_Premium).length;
 
-    // Commission = count of premium referrals × 500
+    // Commission only for premium referrals
     const commission = users.filter(u => u.referredBy && u.is_Premium).length * 500;
 
     kpiTotalUsers.textContent = totalUsers;
@@ -915,7 +924,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ==============================
-  //  Leaderboard (Top Referrers)
+  // Leaderboard
   // ==============================
   function buildLeaderboard(users) {
     const refCounts = {};
@@ -935,8 +944,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           earnings: count * 500
         };
       })
-      .sort((a,b) => b.count - a.count)
-      .slice(0,10);
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
 
     leaderboardBody.innerHTML = top.map(t => `
       <tr>
@@ -947,7 +956,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ==============================
-  //  Referral Trend (last 14 days)
+  // Referral Trend (last 14 days)
   // ==============================
   function buildChart(users) {
     const ctx = document.getElementById("trendChart").getContext("2d");
@@ -956,10 +965,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const labels = [];
     const counts = [];
 
-    for (let i=13; i>=0; i--) {
+    for (let i = 13; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      const label = d.toISOString().slice(5,10); // MM-DD
+      const label = d.toISOString().slice(5, 10); // "MM-DD"
       labels.push(label);
       counts.push(0);
     }
@@ -967,50 +976,53 @@ document.addEventListener("DOMContentLoaded", async () => {
     users.forEach(u => {
       if (!u.joinedAt) return;
       const joined = u.joinedAt.toDate ? u.joinedAt.toDate() : new Date(u.joinedAt);
-      const label = joined.toISOString().slice(5,10);
+      const label = joined.toISOString().slice(5, 10);
       const idx = labels.indexOf(label);
       if (idx !== -1) counts[idx]++;
     });
 
     new Chart(ctx, {
       type: "line",
-      data: { 
-        labels, 
+      data: {
+        labels,
         datasets: [{
-          label:"New Referrals",
-          data:counts,
-          fill:true,
-          borderColor:"#2563eb",
-          backgroundColor:"rgba(37,99,235,0.15)"
-        }] 
+          label: "New Referrals",
+          data: counts,
+          fill: true,
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37,99,235,0.15)"
+        }]
       },
-      options: { responsive:true, plugins:{ legend:{ display:false } } }
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } }
+      }
     });
 
-    if (counts.every(c => c===0)) chartNote.classList.remove("hidden");
+    if (counts.every(c => c === 0)) chartNote.classList.remove("hidden");
   }
 
   // ==============================
-  //  User Explorer
+  // User Explorer
   // ==============================
   function setupExplorer(users) {
     const searchBtn = document.getElementById("searchBtn");
     const searchInput = document.getElementById("searchUsername");
 
     searchBtn.addEventListener("click", () => {
-      const username = searchInput.value.trim();
+      const username = searchInput.value.trim().toLowerCase();
       if (!username) return;
 
-      const user = users.find(u => u.username === username);
+      const user = users.find(u => u.username.toLowerCase() === username);
       if (!user) return alert("User not found");
 
       // Direct referrals
       const directs = users.filter(u => u.referredBy === user.id);
 
-      // Second level referrals
+      // Second-level referrals
       const seconds = users.filter(u => directs.map(d => d.id).includes(u.referredBy));
 
-      // Earnings = premium directs × 500
+      // Earnings from premium directs
       const earnings = directs.filter(u => u.is_Premium).length * 500;
 
       document.getElementById("uDirectCount").textContent = directs.length;
@@ -1020,18 +1032,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("userRefLink").value = `${window.location.origin}/signup?ref=${user.id}`;
       document.getElementById("userPanel").classList.remove("hidden");
 
-      // Render direct referrals list
+      // Render direct referrals
       const list = document.getElementById("uList");
       list.innerHTML = "";
       directs.forEach(d => {
         const div = document.createElement("div");
         div.className = "p-3 rounded-lg border";
-        div.textContent = `@${d.username}`;
+        div.textContent = `@${d.username}${d.is_Premium ? " ⭐" : ""}`;
         list.appendChild(div);
       });
     });
 
-    // Copy referral link
+    // Copy link
     document.getElementById("copyLinkBtn").addEventListener("click", () => {
       const input = document.getElementById("userRefLink");
       input.select();
@@ -1039,7 +1051,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       alert("Link copied!");
     });
 
-    // Share referral link
+    // Share link
     document.getElementById("shareLinkBtn").addEventListener("click", () => {
       const link = document.getElementById("userRefLink").value;
       if (navigator.share) {
@@ -1051,7 +1063,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ==============================
-  //  Init
+  // Init
   // ==============================
   const users = await loadUsers();
   loadKPIs(users);
@@ -1060,8 +1072,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupExplorer(users);
 
 });
-
-
 
 
 
@@ -1221,6 +1231,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 
 

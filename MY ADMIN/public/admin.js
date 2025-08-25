@@ -874,6 +874,105 @@ async function rejectSubmission(doc, reason=''){
 
 
 
+  // REFERRAL FUNCTION 
+
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const db = firebase.firestore();
+
+  const kpiTotalUsers = document.getElementById("kpiTotalUsers");
+  const kpiTotalReferrals = document.getElementById("kpiTotalReferrals");
+  const kpiPremium = document.getElementById("kpiPremium");
+  const kpiCommission = document.getElementById("kpiCommission");
+  const leaderboardBody = document.getElementById("leaderboardBody");
+  const chartNote = document.getElementById("chartNote");
+
+  // Load stats
+  async function loadKPIs() {
+    const usersSnap = await db.collection("users").get();
+    const users = usersSnap.docs.map(d => ({id: d.id, ...d.data()}));
+
+    const totalUsers = users.length;
+    const referrals = users.filter(u => u.referredBy).length;
+    const premium = users.filter(u => u.is_Premium).length;
+    const commission = premium * 1000; // demo value
+
+    kpiTotalUsers.textContent = totalUsers;
+    kpiTotalReferrals.textContent = referrals;
+    kpiPremium.textContent = premium;
+    kpiCommission.textContent = "₦" + commission.toLocaleString();
+
+    return users;
+  }
+
+  // Leaderboard
+  function buildLeaderboard(users) {
+    const refCount = {};
+    users.forEach(u => {
+      if (u.referredBy) {
+        refCount[u.referredBy] = (refCount[u.referredBy] || 0) + 1;
+      }
+    });
+
+    const top = Object.entries(refCount)
+      .map(([user, count]) => ({user, count, earnings: count * 1000}))
+      .sort((a,b) => b.count - a.count)
+      .slice(0,10);
+
+    leaderboardBody.innerHTML = top.map(t => `
+      <tr>
+        <td class="py-1 pr-2">${t.user}</td>
+        <td class="py-1 pr-2 text-right">${t.count}</td>
+        <td class="py-1 text-right">₦${t.earnings.toLocaleString()}</td>
+      </tr>`).join("");
+  }
+
+  // Chart
+  function buildChart(users) {
+    const ctx = document.getElementById("trendChart").getContext("2d");
+    const today = new Date();
+    const labels = [];
+    const counts = [];
+
+    for (let i=13; i>=0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const label = d.toISOString().slice(5,10);
+      labels.push(label);
+      counts.push(0);
+    }
+
+    users.forEach(u => {
+      if (!u.joinedAt) return;
+      const d = u.joinedAt.toDate ? u.joinedAt.toDate() : new Date(u.joinedAt);
+      const label = d.toISOString().slice(5,10);
+      const idx = labels.indexOf(label);
+      if (idx !== -1) counts[idx]++;
+    });
+
+    new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets: [{ label:"New Users", data:counts, fill:true, borderColor:"#2563eb", backgroundColor:"rgba(37,99,235,0.15)" }] },
+      options: { responsive:true, plugins:{ legend:{ display:false } } }
+    });
+
+    if (counts.every(c => c===0)) chartNote.classList.remove("hidden");
+  }
+
+  const users = await loadKPIs();
+  buildLeaderboard(users);
+  buildChart(users);
+});
+
+
+
+
+
+
+
+
+
+
 
 
 // --- Load Withdrawals ---
@@ -1027,5 +1126,6 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 

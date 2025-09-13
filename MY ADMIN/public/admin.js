@@ -377,76 +377,142 @@ async function submitAdminJob() {
 
 
 
-let currentTasks = [];
-let currentCollection = "";
+/*
+  Admin Social Tasks UI + Logic
+  - Only reads from: TiktokInstagram, Whatsapp, Telegram
+  - Uses status values: "on review" (pending), "approved", "rejected"
+  - Credits with Firestore transaction and records in Transactions collection
+*/
+
+const PLATFORMS = ["TiktokInstagram", "Whatsapp", "Telegram"];
+let currentCollection = "TiktokInstagram";
+let currentTasks = []; // array of { id, ...data }
+let selectedStatusFilter = "on review"; // default show pending
 let selectedTask = null;
 
-// Load tasks from Firestore
-async function loadTasks(collection) {
-  currentCollection = collection;
-  const container = document.getElementById("tasks-container");
-  container.innerHTML = `<p class="text-gray-500">Loading ${collection} tasks...</p>`;
+// init: hook tab clicks and filters
+function initSocialAdmin() {
+  PLATFORMS.forEach(name => {
+    const el = document.getElementById(`tab-${name}`);
+    if (el) {
+      el.addEventListener("click", () => {
+        document.querySelectorAll(".task-tab").forEach(t => t.classList.remove("text-blue-600", "border-blue-600"));
+        el.classList.add("text-blue-600", "border-blue-600");
+        loadTasks(name);
+      });
+    }
+  });
 
-  const snapshot = await firebase.firestore()
-    .collection(collection)
-    .orderBy("submittedAt", "desc")
-    .get();
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedStatusFilter = btn.dataset.filter;
+      // visually highlight
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("ring-2", "ring-blue-300"));
+      btn.classList.add("ring-2", "ring-blue-300");
+      renderTasks();
+    });
+  });
 
-  currentTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  renderTasks("pending");
+  // activate default tab
+  document.getElementById("tab-TiktokInstagram")?.click();
 }
 
-// Render tasks by status
-function renderTasks(filter) {
+// load tasks for a collection (only this collection is queried)
+async function loadTasks(collectionName) {
+  currentCollection = collectionName;
+  const container = document.getElementById("tasks-container");
+  container.innerHTML = `<p class="text-gray-500">Loading ${collectionName}...</p>`;
+
+  try {
+    const snapshot = await firebase.firestore()
+      .collection(collectionName)
+      .orderBy("submittedAt", "desc")
+      .get();
+
+    currentTasks = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _collection: collectionName }));
+    renderTasks();
+  } catch (err) {
+    console.error("Error loading tasks:", err);
+    container.innerHTML = `<p class="text-red-500">Failed to load tasks: ${err.message || err}</p>`;
+  }
+}
+
+// render tasks using currentTasks and selectedStatusFilter
+function renderTasks() {
   const container = document.getElementById("tasks-container");
   container.innerHTML = "";
 
-  const filtered = currentTasks.filter(t => t.status === (filter || "on review"));
-  if (!filtered.length) {
-    container.innerHTML = `<p class="text-gray-500">No ${filter} tasks found.</p>`;
+  // use the exact status string in selectedStatusFilter ("on review", "approved", "rejected")
+  const list = currentTasks.filter(t => {
+    // some older docs might be missing status -> treat as "on review"
+    const s = t.status || "on review";
+    return s === selectedStatusFilter;
+  });
+
+  if (!list.length) {
+    container.innerHTML = `<p class="text-gray-500">No ${selectedStatusFilter === "on review" ? "pending" : selectedStatusFilter} tasks.</p>`;
     return;
   }
 
-  filtered.forEach(task => {
+  list.forEach(task => {
     const card = document.createElement("div");
     card.className = "bg-white rounded-xl shadow p-4 flex flex-col gap-2 border";
 
+    // format submittedAt
+    let submittedAt = "";
+    if (task.submittedAt && typeof task.submittedAt.toDate === "function") {
+      submittedAt = task.submittedAt.toDate().toLocaleString();
+    } else if (task.submittedAt) {
+      submittedAt = String(task.submittedAt);
+    }
+
+    // build images (single screenshot or proofs array)
+    let imagesHtml = "";
+    if (task.screenshot) {
+      imagesHtml += `<img src="${task.screenshot}" class="w-full rounded-lg object-cover max-h-60 cursor-pointer" onclick="openReview('${task.id}')">`;
+    }
+    if (Array.isArray(task.proofs) && task.proofs.length) {
+      imagesHtml += `<div class="flex gap-2 mt-2">${task.proofs.map(p => `<img src="${p}" onclick="openReview('${task.id}')" class="w-20 h-20 rounded-lg object-cover cursor-pointer">`).join("")}</div>`;
+    }
+
+    // small fields
+    const username = task.username || task.whatsappNumber || "—";
+    const userId = task.submittedBy || "—";
+    const statusBadge = task.status === "approved" ? `<span class="text-xs px-2 py-1 rounded bg-green-100 text-green-700">approved</span>`
+                      : task.status === "rejected" ? `<span class="text-xs px-2 py-1 rounded bg-red-100 text-red-700">rejected</span>`
+                      : `<span class="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">on review</span>`;
+
     card.innerHTML = `
-      <div class="flex justify-between">
+      <div class="flex justify-between items-start">
         <div>
-          <p class="text-sm text-gray-700"><b>User:</b> ${task.username || "N/A"}</p>
-          <p class="text-xs text-gray-500"><b>UserID:</b> ${task.submittedBy}</p>
-          <p class="text-xs text-gray-400">${task.submittedAt?.toDate().toLocaleString() || ""}</p>
+          <p class="text-sm text-gray-700"><b>User:</b> ${escapeHtml(username)}</p>
+          <p class="text-xs text-gray-500"><b>UserID:</b> ${escapeHtml(userId)}</p>
+          <p class="text-xs text-gray-400">${escapeHtml(submittedAt)}</p>
         </div>
-        <span class="text-xs px-2 py-1 rounded ${task.status === "approved" ? "bg-green-100 text-green-700" : task.status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}">${task.status}</span>
+        ${statusBadge}
       </div>
-      ${task.screenshot ? `<img src="${task.screenshot}" class="w-full rounded-lg object-cover max-h-60 cursor-pointer" onclick="openReview('${task.id}')">` : ""}
-      ${task.proofs ? task.proofs.map(p => `<img src="${p}" class="w-20 h-20 rounded-lg object-cover inline-block cursor-pointer" onclick="openReview('${task.id}')">`).join("") : ""}
-      <button onclick="openReview('${task.id}')" class="mt-2 px-3 py-1 bg-blue-600 text-white text-sm rounded-lg">Review</button>
+
+      ${imagesHtml}
+
+      <div class="flex gap-2 mt-2">
+        <button onclick="openReview('${task.id}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg">Review</button>
+        <button onclick="quickAccept('${task.id}')" class="px-3 py-1 bg-green-600 text-white text-sm rounded-lg">Accept</button>
+        <button onclick="quickReject('${task.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg">Reject</button>
+      </div>
     `;
+
     container.appendChild(card);
   });
 }
 
-// Open Review Modal
+// open review modal (populate full data)
 function openReview(taskId) {
   selectedTask = currentTasks.find(t => t.id === taskId);
   if (!selectedTask) return;
 
   const modal = document.getElementById("reviewModal");
   const content = document.getElementById("reviewContent");
-
-  content.innerHTML = `
-    <p><b>User:</b> ${selectedTask.username || "N/A"}</p>
-    <p><b>User ID:</b> ${selectedTask.submittedBy}</p>
-    <p><b>Status:</b> ${selectedTask.status}</p>
-    ${selectedTask.profileLink ? `<p><b>Profile Link:</b> <a href="${selectedTask.profileLink}" target="_blank" class="text-blue-600">${selectedTask.profileLink}</a></p>` : ""}
-    ${selectedTask.videoLink ? `<p><b>Video Link:</b> <a href="${selectedTask.videoLink}" target="_blank" class="text-blue-600">${selectedTask.videoLink}</a></p>` : ""}
-    ${selectedTask.groupLinks ? `<p><b>Group Links:</b><br>${selectedTask.groupLinks.map(g => `<a href="${g}" target="_blank" class="text-blue-600">${g}</a>`).join("<br>")}</p>` : ""}
-    ${selectedTask.screenshot ? `<img src="${selectedTask.screenshot}" class="w-full rounded-lg mt-2">` : ""}
-    ${selectedTask.proofs ? selectedTask.proofs.map(p => `<img src="${p}" class="w-32 h-32 rounded-lg object-cover mt-2">`).join("") : ""}
-  `;
-
+  content.innerHTML = buildReviewHtml(selectedTask);
   modal.classList.remove("hidden");
   modal.classList.add("flex");
 
@@ -460,43 +526,125 @@ function closeReviewModal() {
   selectedTask = null;
 }
 
-// Handle Accept/Reject
-async function handleDecision(decision) {
+// quick accept / quick reject shortcuts (confirm then call handleDecision)
+function quickAccept(taskId) {
+  selectedTask = currentTasks.find(t => t.id === taskId);
   if (!selectedTask) return;
-
-  const db = firebase.firestore();
-  const userId = selectedTask.submittedBy;
-  const taskId = selectedTask.id;
-
-  // update task status
-  await db.collection(currentCollection).doc(taskId).update({
-    status: decision
-  });
-
-  // credit user if approved
-  if (decision === "approved") {
-    const credit = currentCollection === "TiktokInstagram" ? 2000 : 300;
-    await db.collection("Transactions").add({
-      userId,
-      amount: credit,
-      type: "credit",
-      taskType: currentCollection,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-  }
-
-  alert(`Task ${decision === "approved" ? "approved ✅" : "rejected ❌"}`);
-  closeReviewModal();
-  loadTasks(currentCollection); // refresh
+  if (!confirm("Accept this task and credit the user?")) return;
+  handleDecision("approved");
+}
+function quickReject(taskId) {
+  selectedTask = currentTasks.find(t => t.id === taskId);
+  if (!selectedTask) return;
+  if (!confirm("Reject this task?")) return;
+  handleDecision("rejected");
 }
 
-// Filter buttons
-document.querySelectorAll(".filter-btn").forEach(btn => {
-  btn.addEventListener("click", () => renderTasks(btn.dataset.filter));
+// Build review HTML from task object (shows all the known fields)
+function buildReviewHtml(task) {
+  const submittedAt = task.submittedAt && typeof task.submittedAt.toDate === "function" ? task.submittedAt.toDate().toLocaleString() : (task.submittedAt || "—");
+  let html = `
+    <p><b>Platform:</b> ${task._collection}</p>
+    <p><b>User:</b> ${escapeHtml(task.username || task.whatsappNumber || "—")}</p>
+    <p><b>User ID:</b> ${escapeHtml(task.submittedBy || "—")}</p>
+    <p><b>Status:</b> ${escapeHtml(task.status || "on review")}</p>
+    <p><b>Submitted:</b> ${escapeHtml(submittedAt)}</p>
+  `;
+
+  if (task.profileLink) html += `<p><b>Profile Link:</b> <a href="${task.profileLink}" target="_blank" class="text-blue-600">${escapeHtml(task.profileLink)}</a></p>`;
+  if (task.videoLink) html += `<p><b>Video Link:</b> <a href="${task.videoLink}" target="_blank" class="text-blue-600">${escapeHtml(task.videoLink)}</a></p>`;
+  if (Array.isArray(task.groupLinks) && task.groupLinks.length) html += `<p><b>Group Links:</b><br>${task.groupLinks.map(g => `<a href="${g}" target="_blank" class="text-blue-600">${escapeHtml(g)}</a>`).join("<br>")}</p>`;
+  if (task.whatsappNumber) html += `<p><b>WhatsApp Number:</b> ${escapeHtml(task.whatsappNumber)}</p>`;
+  if (task.followerRequirement) html += `<p><b>Follower Req:</b> ${escapeHtml(task.followerRequirement)}</p>`;
+
+  if (task.screenshot) html += `<img src="${task.screenshot}" class="w-full rounded-lg mt-2">`;
+  if (Array.isArray(task.proofs) && task.proofs.length) {
+    html += `<div class="flex gap-2 mt-2">${task.proofs.map(p => `<img src="${p}" class="w-32 h-32 rounded-lg object-cover">`).join("")}</div>`;
+  }
+
+  return html;
+}
+
+// handle accept/reject with Firestore transaction (prevents double credit)
+async function handleDecision(decision) {
+  if (!selectedTask) return alert("No task selected.");
+  const db = firebase.firestore();
+  const taskRef = db.collection(currentCollection).doc(selectedTask.id);
+  const userId = selectedTask.submittedBy;
+  const adminId = (firebase.auth().currentUser && firebase.auth().currentUser.uid) || "admin";
+
+  const creditAmount = (currentCollection === "TiktokInstagram") ? 2000 : 300;
+  const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+
+  try {
+    await db.runTransaction(async (t) => {
+      const snap = await t.get(taskRef);
+      if (!snap.exists) throw new Error("Task not found.");
+      const data = snap.data();
+      // only allow decision if still on review
+      const currentStatus = data.status || "on review";
+      if (currentStatus !== "on review") {
+        throw new Error(`Task already processed (${currentStatus}).`);
+      }
+
+      // update task status
+      t.update(taskRef, { status: decision, reviewedAt: serverTimestamp, reviewedBy: adminId });
+
+      // If approved -> create transaction record and add to user's balance
+      if (decision === "approved") {
+        const transRef = db.collection("Transactions").doc();
+        t.set(transRef, {
+          userId,
+          amount: creditAmount,
+          type: "credit",
+          taskType: currentCollection,
+          taskId: selectedTask.id,
+          createdAt: serverTimestamp
+        });
+
+        // update or create users/{userId}.balance
+        const userRef = db.collection("users").doc(userId);
+        const userSnap = await t.get(userRef);
+        if (userSnap.exists) {
+          t.update(userRef, { balance: firebase.firestore.FieldValue.increment(creditAmount) });
+        } else {
+          // create user doc with balance (merge sensible default)
+          t.set(userRef, { balance: creditAmount }, { merge: true });
+        }
+      }
+    });
+
+    alert(`Task ${decision === "approved" ? "approved and credited ✅" : "rejected ❌"}`);
+    closeReviewModal();
+    // refresh after update
+    await loadTasks(currentCollection);
+  } catch (err) {
+    console.error("Decision error:", err);
+    alert("Failed to update task: " + (err.message || err));
+    // still refresh to get latest state
+    await loadTasks(currentCollection);
+  }
+}
+
+// utility: simple HTML escape
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// load init when DOM + firebase ready
+document.addEventListener("DOMContentLoaded", () => {
+  // if firebase auth is used to identify admin, wait for auth ready
+  if (firebase && firebase.auth) {
+    firebase.auth().onAuthStateChanged(() => initSocialAdmin());
+  } else {
+    initSocialAdmin();
+  }
 });
-
-
-
 
 
 
@@ -858,6 +1006,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 
 

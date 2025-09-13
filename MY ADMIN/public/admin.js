@@ -377,273 +377,101 @@ async function submitAdminJob() {
 
 
 
-/*
-  Admin Social Tasks UI + Logic
-  - Only reads from: TiktokInstagram, Whatsapp, Telegram
-  - Uses status values: "on review" (pending), "approved", "rejected"
-  - Credits with Firestore transaction and records in Transactions collection
-*/
-
-const PLATFORMS = ["TiktokInstagram", "Whatsapp", "Telegram"];
 let currentCollection = "TiktokInstagram";
-let currentTasks = []; // array of { id, ...data }
-let selectedStatusFilter = "on review"; // default show pending
-let selectedTask = null;
+let statusFilter = "pending";
 
-// init: hook tab clicks and filters
-function initSocialAdmin() {
-  PLATFORMS.forEach(name => {
-    const el = document.getElementById(`tab-${name}`);
-    if (el) {
-      el.addEventListener("click", () => {
-        document.querySelectorAll(".task-tab").forEach(t => t.classList.remove("text-blue-600", "border-blue-600"));
-        el.classList.add("text-blue-600", "border-blue-600");
-        loadTasks(name);
-      });
-    }
-  });
-
-  document.querySelectorAll(".filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      selectedStatusFilter = btn.dataset.filter;
-      // visually highlight
-      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("ring-2", "ring-blue-300"));
-      btn.classList.add("ring-2", "ring-blue-300");
-      renderTasks();
-    });
-  });
-
-  // activate default tab
-  document.getElementById("tab-TiktokInstagram")?.click();
-}
-
-// load tasks for a collection (only this collection is queried)
+// Load tasks from Firestore
 async function loadTasks(collectionName) {
   currentCollection = collectionName;
-  const container = document.getElementById("tasks-container");
-  container.innerHTML = `<p class="text-gray-500">Loading ${collectionName}...</p>`;
+  const container = document.getElementById("tasksContainer");
+  container.innerHTML = "Loading...";
 
   try {
-    const snapshot = await firebase.firestore()
+    const snap = await firebase.firestore()
       .collection(collectionName)
-      .orderBy("submittedAt", "desc")
+      .where("status", "==", filterStatusValue(statusFilter))
       .get();
 
-    currentTasks = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _collection: collectionName }));
-    renderTasks();
+    if (snap.empty) {
+      container.innerHTML = "<p>No tasks found.</p>";
+      return;
+    }
+
+    container.innerHTML = "";
+    snap.forEach(doc => {
+      const data = doc.data();
+      const card = document.createElement("div");
+      card.className = "task-card";
+
+      card.innerHTML = `
+        <p><b>User ID:</b> ${data.submittedBy || "N/A"}</p>
+        <p><b>Status:</b> ${data.status}</p>
+        ${data.username ? `<p><b>Username:</b> ${data.username}</p>` : ""}
+        ${data.whatsappNumber ? `<p><b>WhatsApp:</b> ${data.whatsappNumber}</p>` : ""}
+        ${data.profileLink ? `<p><b>Profile:</b> <a href="${data.profileLink}" target="_blank">${data.profileLink}</a></p>` : ""}
+        ${data.videoLink ? `<p><b>Video:</b> <a href="${data.videoLink}" target="_blank">${data.videoLink}</a></p>` : ""}
+        ${data.groupLinks ? `<p><b>Groups:</b> ${data.groupLinks.join(", ")}</p>` : ""}
+
+        ${data.screenshot ? `<img src="${data.screenshot}" class="task-img" />` : ""}
+        ${data.proofs ? data.proofs.map(url => `<img src="${url}" class="task-img" />`).join("") : ""}
+
+        <p><b>Submitted At:</b> ${data.submittedAt?.toDate().toLocaleString() || "N/A"}</p>
+
+        ${data.status === "on review" ? `
+          <div class="flex gap-2 mt-3">
+            <button onclick="reviewTask('${doc.id}', true)" class="filter-btn bg-green-200">✅ Approve</button>
+            <button onclick="reviewTask('${doc.id}', false)" class="filter-btn bg-red-200">❌ Reject</button>
+          </div>
+        ` : ""}
+      `;
+
+      container.appendChild(card);
+    });
   } catch (err) {
     console.error("Error loading tasks:", err);
-    container.innerHTML = `<p class="text-red-500">Failed to load tasks: ${err.message || err}</p>`;
+    container.innerHTML = "⚠️ Failed to load tasks.";
   }
 }
 
-// render tasks using currentTasks and selectedStatusFilter
-function renderTasks() {
-  const container = document.getElementById("tasks-container");
-  container.innerHTML = "";
-
-  // use the exact status string in selectedStatusFilter ("on review", "approved", "rejected")
-  const list = currentTasks.filter(t => {
-    // some older docs might be missing status -> treat as "on review"
-    const s = t.status || "on review";
-    return s === selectedStatusFilter;
-  });
-
-  if (!list.length) {
-    container.innerHTML = `<p class="text-gray-500">No ${selectedStatusFilter === "on review" ? "pending" : selectedStatusFilter} tasks.</p>`;
-    return;
-  }
-
-  list.forEach(task => {
-    const card = document.createElement("div");
-    card.className = "bg-white rounded-xl shadow p-4 flex flex-col gap-2 border";
-
-    // format submittedAt
-    let submittedAt = "";
-    if (task.submittedAt && typeof task.submittedAt.toDate === "function") {
-      submittedAt = task.submittedAt.toDate().toLocaleString();
-    } else if (task.submittedAt) {
-      submittedAt = String(task.submittedAt);
-    }
-
-    // build images (single screenshot or proofs array)
-    let imagesHtml = "";
-    if (task.screenshot) {
-      imagesHtml += `<img src="${task.screenshot}" class="w-full rounded-lg object-cover max-h-60 cursor-pointer" onclick="openReview('${task.id}')">`;
-    }
-    if (Array.isArray(task.proofs) && task.proofs.length) {
-      imagesHtml += `<div class="flex gap-2 mt-2">${task.proofs.map(p => `<img src="${p}" onclick="openReview('${task.id}')" class="w-20 h-20 rounded-lg object-cover cursor-pointer">`).join("")}</div>`;
-    }
-
-    // small fields
-    const username = task.username || task.whatsappNumber || "—";
-    const userId = task.submittedBy || "—";
-    const statusBadge = task.status === "approved" ? `<span class="text-xs px-2 py-1 rounded bg-green-100 text-green-700">approved</span>`
-                      : task.status === "rejected" ? `<span class="text-xs px-2 py-1 rounded bg-red-100 text-red-700">rejected</span>`
-                      : `<span class="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">on review</span>`;
-
-    card.innerHTML = `
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-sm text-gray-700"><b>User:</b> ${escapeHtml(username)}</p>
-          <p class="text-xs text-gray-500"><b>UserID:</b> ${escapeHtml(userId)}</p>
-          <p class="text-xs text-gray-400">${escapeHtml(submittedAt)}</p>
-        </div>
-        ${statusBadge}
-      </div>
-
-      ${imagesHtml}
-
-      <div class="flex gap-2 mt-2">
-        <button onclick="openReview('${task.id}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg">Review</button>
-        <button onclick="quickAccept('${task.id}')" class="px-3 py-1 bg-green-600 text-white text-sm rounded-lg">Accept</button>
-        <button onclick="quickReject('${task.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg">Reject</button>
-      </div>
-    `;
-
-    container.appendChild(card);
-  });
+function filterStatusValue(f) {
+  if (f === "pending") return "on review";
+  return f;
 }
 
-// open review modal (populate full data)
-function openReview(taskId) {
-  selectedTask = currentTasks.find(t => t.id === taskId);
-  if (!selectedTask) return;
-
-  const modal = document.getElementById("reviewModal");
-  const content = document.getElementById("reviewContent");
-  content.innerHTML = buildReviewHtml(selectedTask);
-  modal.classList.remove("hidden");
-  modal.classList.add("flex");
-
-  document.getElementById("acceptBtn").onclick = () => handleDecision("approved");
-  document.getElementById("rejectBtn").onclick = () => handleDecision("rejected");
+// Change filter
+function setStatusFilter(f) {
+  statusFilter = f;
+  loadTasks(currentCollection);
 }
 
-function closeReviewModal() {
-  const modal = document.getElementById("reviewModal");
-  modal.classList.add("hidden");
-  selectedTask = null;
-}
-
-// quick accept / quick reject shortcuts (confirm then call handleDecision)
-function quickAccept(taskId) {
-  selectedTask = currentTasks.find(t => t.id === taskId);
-  if (!selectedTask) return;
-  if (!confirm("Accept this task and credit the user?")) return;
-  handleDecision("approved");
-}
-function quickReject(taskId) {
-  selectedTask = currentTasks.find(t => t.id === taskId);
-  if (!selectedTask) return;
-  if (!confirm("Reject this task?")) return;
-  handleDecision("rejected");
-}
-
-// Build review HTML from task object (shows all the known fields)
-function buildReviewHtml(task) {
-  const submittedAt = task.submittedAt && typeof task.submittedAt.toDate === "function" ? task.submittedAt.toDate().toLocaleString() : (task.submittedAt || "—");
-  let html = `
-    <p><b>Platform:</b> ${task._collection}</p>
-    <p><b>User:</b> ${escapeHtml(task.username || task.whatsappNumber || "—")}</p>
-    <p><b>User ID:</b> ${escapeHtml(task.submittedBy || "—")}</p>
-    <p><b>Status:</b> ${escapeHtml(task.status || "on review")}</p>
-    <p><b>Submitted:</b> ${escapeHtml(submittedAt)}</p>
-  `;
-
-  if (task.profileLink) html += `<p><b>Profile Link:</b> <a href="${task.profileLink}" target="_blank" class="text-blue-600">${escapeHtml(task.profileLink)}</a></p>`;
-  if (task.videoLink) html += `<p><b>Video Link:</b> <a href="${task.videoLink}" target="_blank" class="text-blue-600">${escapeHtml(task.videoLink)}</a></p>`;
-  if (Array.isArray(task.groupLinks) && task.groupLinks.length) html += `<p><b>Group Links:</b><br>${task.groupLinks.map(g => `<a href="${g}" target="_blank" class="text-blue-600">${escapeHtml(g)}</a>`).join("<br>")}</p>`;
-  if (task.whatsappNumber) html += `<p><b>WhatsApp Number:</b> ${escapeHtml(task.whatsappNumber)}</p>`;
-  if (task.followerRequirement) html += `<p><b>Follower Req:</b> ${escapeHtml(task.followerRequirement)}</p>`;
-
-  if (task.screenshot) html += `<img src="${task.screenshot}" class="w-full rounded-lg mt-2">`;
-  if (Array.isArray(task.proofs) && task.proofs.length) {
-    html += `<div class="flex gap-2 mt-2">${task.proofs.map(p => `<img src="${p}" class="w-32 h-32 rounded-lg object-cover">`).join("")}</div>`;
-  }
-
-  return html;
-}
-
-// handle accept/reject with Firestore transaction (prevents double credit)
-async function handleDecision(decision) {
-  if (!selectedTask) return alert("No task selected.");
+// Approve / Reject task
+async function reviewTask(docId, approve) {
   const db = firebase.firestore();
-  const taskRef = db.collection(currentCollection).doc(selectedTask.id);
-  const userId = selectedTask.submittedBy;
-  const adminId = (firebase.auth().currentUser && firebase.auth().currentUser.uid) || "admin";
+  const ref = db.collection(currentCollection).doc(docId);
 
-  const creditAmount = (currentCollection === "TiktokInstagram") ? 2000 : 300;
-  const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+  let reward = 0;
+  if (approve) {
+    if (currentCollection === "TiktokInstagram") reward = 1000;
+    if (currentCollection === "Whatsapp" || currentCollection === "Telegram") reward = 300;
+  }
 
   try {
-    await db.runTransaction(async (t) => {
-      const snap = await t.get(taskRef);
-      if (!snap.exists) throw new Error("Task not found.");
-      const data = snap.data();
-      // only allow decision if still on review
-      const currentStatus = data.status || "on review";
-      if (currentStatus !== "on review") {
-        throw new Error(`Task already processed (${currentStatus}).`);
-      }
-
-      // update task status
-      t.update(taskRef, { status: decision, reviewedAt: serverTimestamp, reviewedBy: adminId });
-
-      // If approved -> create transaction record and add to user's balance
-      if (decision === "approved") {
-        const transRef = db.collection("Transactions").doc();
-        t.set(transRef, {
-          userId,
-          amount: creditAmount,
-          type: "credit",
-          taskType: currentCollection,
-          taskId: selectedTask.id,
-          createdAt: serverTimestamp
-        });
-
-        // update or create users/{userId}.balance
-        const userRef = db.collection("users").doc(userId);
-        const userSnap = await t.get(userRef);
-        if (userSnap.exists) {
-          t.update(userRef, { balance: firebase.firestore.FieldValue.increment(creditAmount) });
-        } else {
-          // create user doc with balance (merge sensible default)
-          t.set(userRef, { balance: creditAmount }, { merge: true });
-        }
-      }
+    await ref.update({
+      status: approve ? "approved" : "rejected",
+      reward: reward
     });
 
-    alert(`Task ${decision === "approved" ? "approved and credited ✅" : "rejected ❌"}`);
-    closeReviewModal();
-    // refresh after update
-    await loadTasks(currentCollection);
+    alert(approve ? "✅ Task approved!" : "❌ Task rejected!");
+    loadTasks(currentCollection);
   } catch (err) {
-    console.error("Decision error:", err);
-    alert("Failed to update task: " + (err.message || err));
-    // still refresh to get latest state
-    await loadTasks(currentCollection);
+    console.error("Review error:", err);
+    alert("⚠️ Failed to update task.");
   }
 }
 
-// utility: simple HTML escape
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-// load init when DOM + firebase ready
+// auto-load default
 document.addEventListener("DOMContentLoaded", () => {
-  // if firebase auth is used to identify admin, wait for auth ready
-  if (firebase && firebase.auth) {
-    firebase.auth().onAuthStateChanged(() => initSocialAdmin());
-  } else {
-    initSocialAdmin();
-  }
+  loadTasks(currentCollection);
 });
 
 
@@ -1006,6 +834,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 
 

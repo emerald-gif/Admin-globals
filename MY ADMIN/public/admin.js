@@ -377,103 +377,389 @@ async function submitAdminJob() {
 
 
 
+
+/* ------------------ Configuration (edit if your naming differs) ------------------ */
+const USERS_COLLECTION = "users";            // change if your users collection has a different name
+const TRANSACTIONS_COLLECTION = "transactions"; // where to record transaction logs
+const PAGE_SIZE = 12;
+const REWARDS = { TiktokInstagram: 2000, Whatsapp: 300, Telegram: 300 };
+
+/* ------------------ State ------------------ */
+const db = firebase.firestore();
 let currentCollection = "TiktokInstagram";
-let statusFilter = "pending";
+let statusFilter = "pending"; // pending | approved | rejected | all
+let sortOrder = "newest"; // newest | oldest
+let searchQuery = "";
+let startDate = null;
+let endDate = null;
+let lastVisible = null;
+let moreAvailable = false;
+let loading = false;
+let debounceTimer = null;
 
-// Load tasks from Firestore
-async function loadTasks(collectionName) {
-  currentCollection = collectionName;
-  const container = document.getElementById("tasksContainer");
-  container.innerHTML = "Loading...";
-
+/* ------------------ Helpers ------------------ */
+function formatTimestamp(ts) {
   try {
-    const snap = await firebase.firestore()
-      .collection(collectionName)
-      .where("status", "==", filterStatusValue(statusFilter))
-      .get();
-
-    if (snap.empty) {
-      container.innerHTML = "<p>No tasks found.</p>";
-      return;
-    }
-
-    container.innerHTML = "";
-    snap.forEach(doc => {
-      const data = doc.data();
-      const card = document.createElement("div");
-      card.className = "task-card";
-
-      card.innerHTML = `
-        <p><b>User ID:</b> ${data.submittedBy || "N/A"}</p>
-        <p><b>Status:</b> ${data.status}</p>
-        ${data.username ? `<p><b>Username:</b> ${data.username}</p>` : ""}
-        ${data.whatsappNumber ? `<p><b>WhatsApp:</b> ${data.whatsappNumber}</p>` : ""}
-        ${data.profileLink ? `<p><b>Profile:</b> <a href="${data.profileLink}" target="_blank">${data.profileLink}</a></p>` : ""}
-        ${data.videoLink ? `<p><b>Video:</b> <a href="${data.videoLink}" target="_blank">${data.videoLink}</a></p>` : ""}
-        ${data.groupLinks ? `<p><b>Groups:</b> ${data.groupLinks.join(", ")}</p>` : ""}
-
-        ${data.screenshot ? `<img src="${data.screenshot}" class="task-img" />` : ""}
-        ${data.proofs ? data.proofs.map(url => `<img src="${url}" class="task-img" />`).join("") : ""}
-
-        <p><b>Submitted At:</b> ${data.submittedAt?.toDate().toLocaleString() || "N/A"}</p>
-
-        ${data.status === "on review" ? `
-          <div class="flex gap-2 mt-3">
-            <button onclick="reviewTask('${doc.id}', true)" class="filter-btn bg-green-200">✅ Approve</button>
-            <button onclick="reviewTask('${doc.id}', false)" class="filter-btn bg-red-200">❌ Reject</button>
-          </div>
-        ` : ""}
-      `;
-
-      container.appendChild(card);
-    });
-  } catch (err) {
-    console.error("Error loading tasks:", err);
-    container.innerHTML = "⚠️ Failed to load tasks.";
-  }
+    if (!ts) return "N/A";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString();
+  } catch(e) { return "N/A"; }
 }
 
-function filterStatusValue(f) {
-  if (f === "pending") return "on review";
-  return f;
+function filterStatusValue(f) { return f === "pending" ? "on review" : f; }
+
+/* ------------------ UI small helpers ------------------ */
+function setActiveCollectionBtn(el) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  if (el) el.classList.add("active");
+}
+function setActiveFilterBtn(el) {
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  if (el) el.classList.add("active");
 }
 
-// Change filter
-function setStatusFilter(f) {
+/* ------------------ Public UI functions (used by HTML) ------------------ */
+function setCollection(col, el) {
+  currentCollection = col;
+  setActiveCollectionBtn(el);
+  resetAndLoad(true);
+}
+function setStatusFilter(f, el) {
   statusFilter = f;
-  loadTasks(currentCollection);
+  setActiveFilterBtn(el);
+  resetAndLoad(true);
+}
+function setSort(val) {
+  sortOrder = val;
+  resetAndLoad(true);
+}
+function setDateRange() {
+  const s = document.getElementById("startDate").value;
+  const e = document.getElementById("endDate").value;
+  startDate = s ? new Date(s) : null;
+  endDate = e ? new Date(e) : null;
+  // normalize endDate to include full day
+  if (endDate) { endDate.setHours(23,59,59,999); }
+  resetAndLoad(true);
+}
+document.getElementById("searchInput").addEventListener("input", (ev) => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    searchQuery = ev.target.value.trim().toLowerCase();
+    resetAndLoad(true);
+  }, 350);
+});
+document.getElementById("refreshBtn").addEventListener("click", () => resetAndLoad(true));
+document.getElementById("loadMoreBtn").addEventListener("click", () => loadTasks(false));
+
+/* ------------------ Image modal ------------------ */
+function openImageModal(src) {
+  document.getElementById("imageModalImg").src = src;
+  document.getElementById("imageModal").classList.remove("hidden");
+}
+function closeImageModal() {
+  document.getElementById("imageModalImg").src = "";
+  document.getElementById("imageModal").classList.add("hidden");
 }
 
-// Approve / Reject task
-async function reviewTask(docId, approve) {
-  const db = firebase.firestore();
-  const ref = db.collection(currentCollection).doc(docId);
-
-  let reward = 0;
-  if (approve) {
-    if (currentCollection === "TiktokInstagram") reward = 1000;
-    if (currentCollection === "Whatsapp" || currentCollection === "Telegram") reward = 300;
-  }
-
+/* ------------------ Confirm modal ------------------ */
+let confirmParams = null;
+function openConfirmModal({title, text, isReject=false, onConfirm}) {
+  confirmParams = { onConfirm, isReject };
+  document.getElementById("confirmTitle").innerText = title;
+  document.getElementById("confirmText").innerText = text;
+  document.getElementById("rejectReasonWrap").classList.toggle("hidden", !isReject);
+  document.getElementById("rejectReason").value = "";
+  document.getElementById("confirmActionBtn").innerText = isReject ? "Reject" : "Approve";
+  document.getElementById("confirmActionBtn").classList.toggle("bg-red-500", isReject);
+  document.getElementById("confirmActionBtn").classList.toggle("bg-green-500", !isReject);
+  document.getElementById("confirmModal").classList.remove("hidden");
+}
+function closeConfirmModal() {
+  confirmParams = null;
+  document.getElementById("confirmModal").classList.add("hidden");
+}
+document.getElementById("confirmActionBtn").addEventListener("click", async () => {
+  if (!confirmParams) return closeConfirmModal();
+  const reason = document.getElementById("rejectReason").value.trim();
   try {
-    await ref.update({
-      status: approve ? "approved" : "rejected",
-      reward: reward
-    });
-
-    alert(approve ? "✅ Task approved!" : "❌ Task rejected!");
-    loadTasks(currentCollection);
-  } catch (err) {
-    console.error("Review error:", err);
-    alert("⚠️ Failed to update task.");
+    await confirmParams.onConfirm(reason);
+  } catch (e) {
+    console.error(e);
+    alert("Action failed: " + (e?.message || e));
+  } finally {
+    closeConfirmModal();
   }
-}
-
-// auto-load default
-document.addEventListener("DOMContentLoaded", () => {
-  loadTasks(currentCollection);
 });
 
+/* ------------------ Load stats ------------------ */
+async function loadTaskStats(collectionName) {
+  try {
+    const base = db.collection(collectionName);
+    const [pendingSnap, approvedSnap, rejectedSnap] = await Promise.all([
+      base.where("status", "==", "on review").get(),
+      base.where("status", "==", "approved").get(),
+      base.where("status", "==", "rejected").get()
+    ]);
+    document.getElementById("pendingCount").innerText = pendingSnap.size;
+    document.getElementById("approvedCount").innerText = approvedSnap.size;
+    document.getElementById("rejectedCount").innerText = rejectedSnap.size;
+  } catch (err) {
+    console.error("Stats load error:", err);
+  }
+}
+
+/* ------------------ Render helper ------------------ */
+function renderTasks(tasks, reset = true, showLoadMore = false) {
+  const container = document.getElementById("tasksContainer");
+  if (reset) container.innerHTML = "";
+  if (!tasks || tasks.length === 0) {
+    if (reset) container.innerHTML = `<div class="col-span-full text-center text-gray-400">😕 No tasks found</div>`;
+    document.getElementById("loadMoreBtn").classList.add("hidden");
+    return;
+  }
+
+  tasks.forEach(task => {
+    const card = document.createElement("div");
+    card.className = "task-card";
+
+    // status badge
+    let badgeClass = "task-badge badge-pending";
+    if (task.status === "approved") badgeClass = "task-badge badge-approved";
+    if (task.status === "rejected") badgeClass = "task-badge badge-rejected";
+
+    // images (proofs)
+    let imgsHtml = "";
+    if (task.screenshot) imgsHtml += `<img src="${task.screenshot}" onclick="openImageModal('${task.screenshot}')" class="task-thumb" />`;
+    if (task.proofs && Array.isArray(task.proofs)) {
+      task.proofs.forEach(url => imgsHtml += `<img src="${url}" onclick="openImageModal('${url}')" class="task-thumb" />`);
+    }
+
+    // group links
+    const groupsHtml = task.groupLinks ? `<p class="task-meta"><b>Groups:</b> ${task.groupLinks.join(", ")}</p>` : "";
+
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div style="flex:1;">
+          <p class="task-meta"><b>User ID:</b> <a href="/admin/users/${task.submittedBy}" target="_blank" class="text-blue-600 underline">${task.submittedBy || "N/A"}</a></p>
+          <p class="task-meta"><b>Status:</b> <span class="${badgeClass}">${task.status}</span></p>
+          ${task.username ? `<p class="task-meta"><b>Username:</b> ${task.username}</p>`: ""}
+          ${task.whatsappNumber ? `<p class="task-meta"><b>WhatsApp:</b> ${task.whatsappNumber}</p>`: ""}
+          ${task.profileLink ? `<p class="task-meta"><b>Profile:</b> <a href="${task.profileLink}" target="_blank" class="text-blue-600 underline">Open</a></p>` : ""}
+          ${task.videoLink ? `<p class="task-meta"><b>Video:</b> <a href="${task.videoLink}" target="_blank" class="text-blue-600 underline">Watch</a></p>` : ""}
+          ${groupsHtml}
+          <p class="task-meta"><b>Submitted At:</b> ${formatTimestamp(task.submittedAt)}</p>
+          <p class="task-meta"><b>Doc ID:</b> ${task.id}</p>
+        </div>
+        <div style="min-width:120px; text-align:right;">
+          <div>${imgsHtml}</div>
+        </div>
+      </div>
+    `;
+
+    // action buttons (only if on review/pending)
+    if (task.status === "on review") {
+      const actionsWrap = document.createElement("div");
+      actionsWrap.className = "flex gap-2 mt-4";
+
+      const approveBtn = document.createElement("button");
+      approveBtn.className = "action-btn approve-btn";
+      approveBtn.innerText = "✅ Approve";
+      approveBtn.onclick = () => {
+        openConfirmModal({
+          title: "Approve Task",
+          text: `Approve this task and credit user ${task.submittedBy} with ${REWARDS[currentCollection] || 0} units?`,
+          isReject: false,
+          onConfirm: async () => await reviewTaskTransaction(task.id, true, task)
+        });
+      };
+
+      const rejectBtn = document.createElement("button");
+      rejectBtn.className = "action-btn reject-btn";
+      rejectBtn.innerText = "❌ Reject";
+      rejectBtn.onclick = () => {
+        openConfirmModal({
+          title: "Reject Task",
+          text: `Reject this task? Optionally provide a reason below.`,
+          isReject: true,
+          onConfirm: async (reason) => await reviewTaskTransaction(task.id, false, task, reason)
+        });
+      };
+
+      actionsWrap.appendChild(approveBtn);
+      actionsWrap.appendChild(rejectBtn);
+      card.appendChild(actionsWrap);
+    }
+
+    document.getElementById("tasksContainer").appendChild(card);
+  });
+
+  // load more visibility
+  const loadMoreBtn = document.getElementById("loadMoreBtn");
+  if (showLoadMore && moreAvailable) loadMoreBtn.classList.remove("hidden");
+  else loadMoreBtn.classList.add("hidden");
+}
+
+/* ------------------ Main loader (with basic client-side search & date filtering) ------------------ */
+async function loadTasks(reset = true) {
+  if (loading) return;
+  loading = true;
+  const container = document.getElementById("tasksContainer");
+  if (reset) {
+    container.innerHTML = `<div class="col-span-full text-center text-gray-500">⏳ Loading tasks...</div>`;
+    lastVisible = null;
+    moreAvailable = false;
+  } else {
+    document.getElementById("loadMoreBtn").innerText = "Loading...";
+  }
+
+  try {
+    await loadTaskStats(currentCollection);
+
+    // Build base query
+    let q = db.collection(currentCollection);
+    if (statusFilter !== "all") q = q.where("status", "==", filterStatusValue(statusFilter));
+    // order
+    q = q.orderBy("submittedAt", sortOrder === "newest" ? "desc" : "asc");
+
+    // Pagination: if no search & no date filters, we paginate server-side
+    const useServerPagination = !searchQuery && !startDate && !endDate;
+
+    let snap;
+    if (useServerPagination) {
+      if (lastVisible) q = q.startAfter(lastVisible);
+      q = q.limit(PAGE_SIZE);
+      snap = await q.get();
+      if (snap.docs.length > 0) lastVisible = snap.docs[snap.docs.length - 1];
+      moreAvailable = snap.docs.length === PAGE_SIZE;
+    } else {
+      // search/date present -> fetch larger set and filter client-side
+      const MAX_FETCH = 400;
+      q = q.limit(MAX_FETCH);
+      snap = await q.get();
+      moreAvailable = false;
+    }
+
+    const docs = (snap && !snap.empty) ? snap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+
+    // client-side filtering for search & date range (works even when server-side pagination used;
+    // for server pagination we only receive PAGE_SIZE docs though)
+    let filtered = docs.filter(doc => {
+      // date filter
+      if (startDate || endDate) {
+        const t = doc.submittedAt ? (doc.submittedAt.toDate ? doc.submittedAt.toDate() : new Date(doc.submittedAt)) : null;
+        if (startDate && (!t || t < startDate)) return false;
+        if (endDate && (!t || t > endDate)) return false;
+      }
+      // search filter
+      if (searchQuery) {
+        const hay = [
+          doc.submittedBy || "",
+          doc.username || "",
+          doc.profileLink || "",
+          doc.videoLink || "",
+          (doc.groupLinks || []).join(" ")
+        ].join(" ").toLowerCase();
+        if (!hay.includes(searchQuery)) return false;
+      }
+      return true;
+    });
+
+    // If we fetched more than PAGE_SIZE because of search/filters, slice results
+    let toShow = filtered;
+    if (useServerPagination) {
+      // server pagination case: show what we have (docs already limited)
+      toShow = filtered;
+    } else {
+      toShow = filtered.slice(0, PAGE_SIZE);
+      moreAvailable = filtered.length > PAGE_SIZE;
+      // if filtered results are less than PAGE_SIZE but less than original snap, we can show all filtered
+    }
+
+    renderTasks(toShow, reset, moreAvailable);
+  } catch (err) {
+    console.error("Error loading tasks:", err);
+    document.getElementById("tasksContainer").innerHTML = `<div class="text-red-500">⚠️ Failed to load tasks</div>`;
+  } finally {
+    loading = false;
+    document.getElementById("loadMoreBtn").innerText = "Load more";
+  }
+}
+
+/* ------------------ Approve/Reject safe transaction ------------------ */
+async function reviewTaskTransaction(docId, approve = true, taskDoc = null, rejectReason = "") {
+  // run a firestore transaction to avoid double crediting
+  const rewardAmount = approve ? (REWARDS[currentCollection] || 0) : 0;
+  const adminUid = (firebase.auth().currentUser && firebase.auth().currentUser.uid) ? firebase.auth().currentUser.uid : "admin";
+
+  try {
+    await db.runTransaction(async tx => {
+      const taskRef = db.collection(currentCollection).doc(docId);
+      const taskSnap = await tx.get(taskRef);
+      if (!taskSnap.exists) throw new Error("Task not found");
+
+      const task = taskSnap.data();
+      // already finalised?
+      if (task.status === "approved" && approve) throw new Error("Task already approved");
+      if (task.status === "rejected" && !approve) throw new Error("Task already rejected");
+
+      // update task doc
+      const updatePayload = {
+        status: approve ? "approved" : "rejected",
+        reviewedBy: adminUid,
+        reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        reviewReason: rejectReason || "",
+        reward: approve ? rewardAmount : 0
+      };
+      tx.update(taskRef, updatePayload);
+
+      if (approve) {
+        // credit user balance (assumes users collection and 'balance' numeric field)
+        if (!task.submittedBy) throw new Error("Task missing submittedBy");
+        const userRef = db.collection(USERS_COLLECTION).doc(task.submittedBy);
+        tx.update(userRef, { balance: firebase.firestore.FieldValue.increment(rewardAmount) });
+
+        // create a transaction record
+        const txnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
+        tx.set(txnRef, {
+          userId: task.submittedBy,
+          amount: rewardAmount,
+          type: "social_task_reward",
+          collection: currentCollection,
+          taskId: docId,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          note: `Reward for ${currentCollection} task approved by admin ${adminUid}`
+        });
+      }
+    });
+
+    alert(approve ? "✅ Task approved and user credited." : "❌ Task rejected.");
+    // refresh
+    await loadTaskStats(currentCollection);
+    // reload the list fresh
+    resetAndLoad(true);
+  } catch (err) {
+    console.error("Transaction error:", err);
+    alert("⚠️ Action failed: " + (err?.message || err));
+    // if error mentions already approved, still refresh to reflect actual state
+    resetAndLoad(true);
+  }
+}
+
+/* ------------------ reset helper ------------------ */
+function resetAndLoad(reset = true) {
+  lastVisible = null;
+  moreAvailable = false;
+  loadTasks(reset);
+}
+
+/* ------------------ initial load ------------------ */
+document.addEventListener("DOMContentLoaded", () => {
+  // initialize UI states
+  setCollection(currentCollection, document.querySelector(".tab-btn"));
+  setStatusFilter(statusFilter, document.querySelector(".filter-btn"));
+  loadTasks(true);
+});
 
 
 
@@ -834,6 +1120,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 
 

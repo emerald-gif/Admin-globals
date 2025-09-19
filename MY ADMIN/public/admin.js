@@ -385,7 +385,7 @@ const PAGE_SIZE = 12;
 const REWARDS = { TiktokInstagram: 2000, Whatsapp: 300, Telegram: 300 };
 
 /* ------------------ State ------------------ */
-const db = firebase.firestore();
+
 let currentCollection = "TiktokInstagram";
 let statusFilter = "pending"; // pending | approved | rejected | all
 let sortOrder = "newest"; // newest | oldest
@@ -1120,6 +1120,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 
 

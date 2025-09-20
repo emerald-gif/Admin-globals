@@ -1296,7 +1296,6 @@ async function sendEmailNotification() {
 
 
 
-
 // --- Load Everything on Page Load ---
 window.addEventListener('DOMContentLoaded', () => {
   fetchStats();
@@ -1304,15 +1303,17 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchPendingJobsForAdmin();
   loadWithdrawals();
   loadTaskSubmissions();
-  
-  // 📲 Also preload Airtime/Data requests
-  loadBillsAdmin();
+
+  // 📲 Preload Airtime/Data requests (default = Airtime Pending)
+  switchBillType("airtime");
+  switchBillStatus("pending");
 });
 
 // ✅ Expose admin functions globally for inline onclick
-window.loadBillsAdmin = loadBillsAdmin;
-window.reviewBill = reviewBill;
-
+window.loadBillsAdmin   = loadBillsAdmin;
+window.reviewBill       = reviewBill;
+window.switchBillType   = switchBillType;
+window.switchBillStatus = switchBillStatus;
 
 
 

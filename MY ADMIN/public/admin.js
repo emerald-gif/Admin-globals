@@ -766,119 +766,148 @@ document.addEventListener("DOMContentLoaded", () => {
  
 
 // ===== Airtime/Data Admin Review =====
-// ===== Airtime/Data Admin Review =====
-/* ====== Airtime & Data Admin (polished, safe) ====== */
 
-// Configs / constants
+        
 let currentBillType = "airtime";   // airtime | data
 let currentBillStatus = "pending"; // pending | successful | failed
+let billsUnsub = null; // listener cleanup
 
 // Switch between Airtime / Data
 function switchBillType(type) {
   currentBillType = type;
-  document.getElementById("tab-airtime").className =
-    type === "airtime" ? "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
-                       : "px-4 py-2 font-medium text-gray-500 hover:text-blue-600";
-  document.getElementById("tab-data").className =
-    type === "data" ? "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
-                    : "px-4 py-2 font-medium text-gray-500 hover:text-blue-600";
+  updateBillTabs();
   loadBillsAdmin();
 }
 
 // Switch Pending / Successful / Failed
 function switchBillStatus(status) {
   currentBillStatus = status;
-  ["pending","successful","failed"].forEach(s => {
-    document.getElementById(`subtab-${s}`).className =
-      status === s
-        ? "px-5 py-2 text-sm font-medium rounded-full bg-blue-600 text-white shadow-md transition"
-        : "px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600";
-  });
+  updateBillSubtabs();
   loadBillsAdmin();
 }
 
-// Load Airtime/Data Requests
-async function loadBillsAdmin() {
+// Update tab styles
+function updateBillTabs() {
+  document.getElementById("tab-airtime").className =
+    currentBillType === "airtime"
+      ? "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+      : "px-4 py-2 font-medium text-gray-500 hover:text-blue-600";
+  document.getElementById("tab-data").className =
+    currentBillType === "data"
+      ? "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+      : "px-4 py-2 font-medium text-gray-500 hover:text-blue-600";
+}
+
+function updateBillSubtabs() {
+  ["pending","successful","failed"].forEach(s => {
+    document.getElementById(`subtab-${s}`).className =
+      currentBillStatus === s
+        ? "px-5 py-2 text-sm font-medium rounded-full bg-blue-600 text-white shadow-md transition"
+        : "px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600";
+  });
+}
+
+// Load Airtime/Data Requests (Realtime)
+function loadBillsAdmin() {
   const container = document.getElementById("billsContainer");
   container.innerHTML = `<div class="text-center py-12 text-gray-500 animate-pulse">Loading...</div>`;
 
-  try {
-    let snap = await db.collection("bill_submissions")
-      .orderBy("createdAt", "desc")
-      .limit(50)
-      .get();
+  if (billsUnsub) billsUnsub(); // cleanup old listener
 
-    container.innerHTML = "";
-    snap.forEach(doc => {
-      const data = doc.data();
-      const isData = data.type === "data";
-      const type = isData ? "data" : "airtime";
+  billsUnsub = db.collection("bill_submissions")
+    .orderBy("createdAt", "desc")
+    .limit(50)
+    .onSnapshot(async (snap) => {
+      container.innerHTML = "";
 
-      // Filter by Airtime/Data
-      if (type !== currentBillType) return;
+      if (snap.empty) {
+        container.innerHTML = `<div class="text-center py-16 text-gray-400">📭 No ${currentBillType} ${currentBillStatus} requests</div>`;
+        return;
+      }
 
-      // Pending = processed false, Successful/Failed = look in Transaction
-      if (currentBillStatus === "pending" && data.processed) return;
-      if (currentBillStatus !== "pending" && !data.processed) return;
+      for (const doc of snap.docs) {
+        const data = doc.data();
+        const isData = data.type === "data";
+        const type = isData ? "data" : "airtime";
 
-      // Card
-      const card = document.createElement("div");
-      card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
+        // Filter by type
+        if (type !== currentBillType) continue;
 
-      card.innerHTML = `
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-semibold uppercase tracking-wide text-gray-500">${type.toUpperCase()}</span>
-            <span class="px-3 py-1 rounded-full text-xs font-medium ${
-              currentBillStatus === "successful" ? "bg-green-100 text-green-700" :
-              currentBillStatus === "failed" ? "bg-red-100 text-red-700" :
-              "bg-yellow-100 text-yellow-700"
-            }">${currentBillStatus}</span>
+        // 🔹 Fetch matching transaction
+        let transSnap = await db.collection("Transaction")
+          .where("userId", "==", data.userId)
+          .where("amount", "==", data.amount)
+          .orderBy("timestamp", "desc")
+          .limit(1)
+          .get();
+
+        let transStatus = transSnap.empty ? "processing" : transSnap.docs[0].data().status;
+
+        // 🔹 Filter by status
+        if (currentBillStatus === "pending" && data.processed) continue;
+        if (currentBillStatus === "successful" && (!data.processed || transStatus !== "successful")) continue;
+        if (currentBillStatus === "failed" && (!data.processed || transStatus !== "failed")) continue;
+
+        // 🔹 Status badge
+        const statusBadge =
+          currentBillStatus === "successful"
+            ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Successful</span>`
+            : currentBillStatus === "failed"
+              ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>`
+              : `<span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>`;
+
+        // 🔹 Card
+        const card = document.createElement("div");
+        card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-sm font-semibold uppercase tracking-wide text-gray-500">${type.toUpperCase()}</span>
+              ${statusBadge}
+            </div>
+            <h3 class="text-lg font-bold text-gray-800 mb-2">₦${Number(data.amount).toLocaleString()}</h3>
+            <div class="space-y-1 text-sm text-gray-600">
+              <p><b>📱 Phone:</b> ${data.phone || "N/A"}</p>
+              <p><b>🌐 Network:</b> ${data.network || data.networkLabel || "N/A"}</p>
+              ${data.planLabel ? `<p><b>📦 Plan:</b> ${data.planLabel}</p>` : ""}
+              <p><b>👤 User ID:</b> <span class="font-mono">${data.userId}</span></p>
+              <p><b>🕒 Date:</b> ${data.createdAt?.toDate().toLocaleString() || "N/A"}</p>
+            </div>
           </div>
 
-          <h3 class="text-lg font-bold text-gray-800 mb-2">₦${Number(data.amount).toLocaleString()}</h3>
+          ${!data.processed && currentBillStatus === "pending" ? `
+            <div class="flex gap-3 mt-4">
+              <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, true, this)"
+                      class="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
+                ✅ Approve
+              </button>
+              <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, false, this)"
+                      class="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition">
+                ❌ Reject
+              </button>
+            </div>
+          ` : ""}
+        `;
+        container.appendChild(card);
+      }
 
-          <div class="space-y-1 text-sm text-gray-600">
-            <p><b>📱 Phone:</b> ${data.phone || "N/A"}</p>
-            <p><b>🌐 Network:</b> ${data.network || data.networkLabel || "N/A"}</p>
-            ${data.planLabel ? `<p><b>📦 Plan:</b> ${data.planLabel}</p>` : ""}
-            <p><b>👤 User ID:</b> <span class="font-mono">${data.userId}</span></p>
-            <p><b>🕒 Date:</b> ${data.createdAt?.toDate().toLocaleString() || "N/A"}</p>
-          </div>
-        </div>
-
-        ${!data.processed && currentBillStatus === "pending" ? `
-          <div class="flex gap-3 mt-4">
-            <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, true)"
-              class="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
-              ✅ Approve
-            </button>
-            <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, false)"
-              class="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition">
-              ❌ Reject
-            </button>
-          </div>
-        ` : ""}
-      `;
-      container.appendChild(card);
+      if (!container.hasChildNodes()) {
+        container.innerHTML = `<div class="text-center py-16 text-gray-400">📭 No ${currentBillType} ${currentBillStatus} requests</div>`;
+      }
     });
-
-    if (!container.hasChildNodes()) {
-      container.innerHTML = `<div class="text-center py-16 text-gray-400">📭 No ${currentBillType} ${currentBillStatus} requests</div>`;
-    }
-  } catch (err) {
-    console.error("Error loading bills:", err);
-    container.innerHTML = `<div class="text-center py-12 text-red-500">⚠️ Failed to load</div>`;
-  }
 }
 
 // Approve / Reject
-async function reviewBill(billId, userId, amount, approve) {
+async function reviewBill(billId, userId, amount, approve, btnEl) {
   try {
+    btnEl.disabled = true;
+    btnEl.innerText = approve ? "Approving..." : "Rejecting...";
+
     const billRef = db.collection("bill_submissions").doc(billId);
     const userRef = db.collection("users").doc(userId);
 
-    // ✅ mark as processed only
+    // ✅ mark as processed
     await billRef.update({ processed: true });
 
     // ✅ update matching Transaction
@@ -902,11 +931,23 @@ async function reviewBill(billId, userId, amount, approve) {
       });
     }
 
-    loadBillsAdmin();
+    alert(approve ? "✅ Approved Successfully!" : "❌ Rejected & Refunded!");
   } catch (err) {
     console.error("Error reviewing bill:", err);
+    alert("⚠️ Failed to process action.");
   }
 }
+
+
+
+
+
+
+
+
+
+
+
 
 // REFERRAL FUNCTION 
 
@@ -1271,6 +1312,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ✅ Expose admin functions globally for inline onclick
 window.loadBillsAdmin = loadBillsAdmin;
 window.reviewBill = reviewBill;
+
 
 
 

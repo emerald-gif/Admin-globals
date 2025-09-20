@@ -766,6 +766,7 @@ document.addEventListener("DOMContentLoaded", () => {
  
 
 // ===== Airtime/Data Admin Review =====
+// ===== Airtime/Data Admin Review =====
 async function loadBillsAdmin() {
   const container = document.getElementById("billsContainer");
   container.innerHTML = `
@@ -848,7 +849,59 @@ async function loadBillsAdmin() {
   }
 }
 
+// --- Approve / Reject Logic ---
+async function reviewBill(docId, userId, amount, success) {
+  console.log("⚡ reviewBill clicked:", { docId, userId, amount, success });
 
+  const billRef = db.collection("bill_submissions").doc(docId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const billSnap = await tx.get(billRef);
+      if (!billSnap.exists) throw new Error("Bill not found");
+
+      // ✅ Update bill
+      tx.update(billRef, {
+        processed: true,
+        status: success ? "successful" : "failed"
+      });
+
+      // 🔎 Find related transaction
+      const txSnap = await db.collection("Transaction")
+        .where("userId", "==", userId)
+        .where("amount", "==", amount)
+        .where("status", "==", "processing")
+        .limit(1)
+        .get();
+
+      if (!txSnap.empty) {
+        tx.update(txSnap.docs[0].ref, {
+          status: success ? "successful" : "failed"
+        });
+      }
+
+      // 💰 Refund if failed
+      if (!success) {
+        const userRef = db.collection("users").doc(userId);
+        const uSnap = await tx.get(userRef);
+        if (uSnap.exists) {
+          const bal = uSnap.data().balance || 0;
+          tx.update(userRef, { balance: bal + amount });
+        }
+      }
+    });
+
+    alert(success ? "✅ Marked Successful" : "❌ Marked Failed + Refunded");
+    loadBillsAdmin(); // refresh UI
+  } catch (err) {
+    console.error("Review error:", err);
+    alert("⚠️ Failed to update");
+  }
+}
+
+// --- Expose globally for onclick ---
+window.loadBillsAdmin = loadBillsAdmin;
+window.reviewBill = reviewBill;
 
 
 
@@ -1217,6 +1270,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ✅ Expose admin functions globally for inline onclick
 window.loadBillsAdmin = loadBillsAdmin;
 window.reviewBill = reviewBill;
+
 
 
 

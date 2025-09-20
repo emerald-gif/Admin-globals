@@ -1209,9 +1209,14 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchPendingJobsForAdmin();
   loadWithdrawals();
   loadTaskSubmissions();
-
+  
+  // 📲 Also preload Airtime/Data requests
+  loadBillsAdmin();
 });
 
+// ✅ Expose admin functions globally for inline onclick
+window.loadBillsAdmin = loadBillsAdmin;
+window.reviewBill = reviewBill;
 
 
 

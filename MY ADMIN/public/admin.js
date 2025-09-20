@@ -817,7 +817,7 @@ function loadBillsAdmin() {
   billsUnsub = db.collection("bill_submissions")
     .orderBy("createdAt", "desc")
     .limit(50)
-    .onSnapshot(async (snap) => {
+    .onSnapshot((snap) => {
       container.innerHTML = "";
 
       if (snap.empty) {
@@ -825,79 +825,91 @@ function loadBillsAdmin() {
         return;
       }
 
-      for (const doc of snap.docs) {
-        const data = doc.data();
-        const isData = data.type === "data";
-        const type = isData ? "data" : "airtime";
+      // Use Promise.all to handle async transaction lookups safely
+      Promise.all(
+        snap.docs.map(async (doc) => {
+          const data = doc.data();
+          const isData = data.type === "data";
+          const type = isData ? "data" : "airtime";
 
-        // Filter by type
-        if (type !== currentBillType) continue;
+          // Filter by type
+          if (type !== currentBillType) return null;
 
-        // 🔹 Fetch matching transaction
-        let transSnap = await db.collection("Transaction")
-          .where("userId", "==", data.userId)
-          .where("amount", "==", data.amount)
-          .orderBy("timestamp", "desc")
-          .limit(1)
-          .get();
+          // 🔹 Fetch matching transaction
+          let transStatus = "processing";
+          try {
+            const transSnap = await db.collection("Transaction")
+              .where("userId", "==", data.userId)
+              .where("amount", "==", data.amount)
+              .orderBy("timestamp", "desc")
+              .limit(1)
+              .get();
+            if (!transSnap.empty) {
+              transStatus = transSnap.docs[0].data().status || "processing";
+            }
+          } catch (e) {
+            console.error("Transaction fetch error:", e);
+          }
 
-        let transStatus = transSnap.empty ? "processing" : transSnap.docs[0].data().status;
+          // 🔹 Filter by status
+          if (currentBillStatus === "pending" && data.processed) return null;
+          if (currentBillStatus === "successful" && (!data.processed || transStatus !== "successful")) return null;
+          if (currentBillStatus === "failed" && (!data.processed || transStatus !== "failed")) return null;
 
-        // 🔹 Filter by status
-        if (currentBillStatus === "pending" && data.processed) continue;
-        if (currentBillStatus === "successful" && (!data.processed || transStatus !== "successful")) continue;
-        if (currentBillStatus === "failed" && (!data.processed || transStatus !== "failed")) continue;
+          // 🔹 Status badge
+          const statusBadge =
+            currentBillStatus === "successful"
+              ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Successful</span>`
+              : currentBillStatus === "failed"
+                ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>`
+                : `<span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>`;
 
-        // 🔹 Status badge
-        const statusBadge =
-          currentBillStatus === "successful"
-            ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Successful</span>`
-            : currentBillStatus === "failed"
-              ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>`
-              : `<span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>`;
+          // 🔹 Card
+          const card = document.createElement("div");
+          card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
+          card.id = `bill-${doc.id}`; // ✅ assign ID for UI updates
 
-        // 🔹 Card
-        const card = document.createElement("div");
-        card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
-
-        card.innerHTML = `
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-sm font-semibold uppercase tracking-wide text-gray-500">${type.toUpperCase()}</span>
-              ${statusBadge}
+          card.innerHTML = `
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-sm font-semibold uppercase tracking-wide text-gray-500">${type.toUpperCase()}</span>
+                ${statusBadge}
+              </div>
+              <h3 class="text-lg font-bold text-gray-800 mb-2">₦${Number(data.amount).toLocaleString()}</h3>
+              <div class="space-y-1 text-sm text-gray-600">
+                <p><b>📱 Phone:</b> ${data.phone || "N/A"}</p>
+                <p><b>🌐 Network:</b> ${data.network || data.networkLabel || "N/A"}</p>
+                ${data.planLabel ? `<p><b>📦 Plan:</b> ${data.planLabel}</p>` : ""}
+                <p><b>👤 User ID:</b> <span class="font-mono">${data.userId}</span></p>
+                <p><b>🕒 Date:</b> ${data.createdAt?.toDate().toLocaleString() || "N/A"}</p>
+              </div>
             </div>
-            <h3 class="text-lg font-bold text-gray-800 mb-2">₦${Number(data.amount).toLocaleString()}</h3>
-            <div class="space-y-1 text-sm text-gray-600">
-              <p><b>📱 Phone:</b> ${data.phone || "N/A"}</p>
-              <p><b>🌐 Network:</b> ${data.network || data.networkLabel || "N/A"}</p>
-              ${data.planLabel ? `<p><b>📦 Plan:</b> ${data.planLabel}</p>` : ""}
-              <p><b>👤 User ID:</b> <span class="font-mono">${data.userId}</span></p>
-              <p><b>🕒 Date:</b> ${data.createdAt?.toDate().toLocaleString() || "N/A"}</p>
-            </div>
-          </div>
 
-          ${!data.processed && currentBillStatus === "pending" ? `
-            <div class="flex gap-3 mt-4">
-              <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, true, this)"
-                      class="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
-                ✅ Approve
-              </button>
-              <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, false, this)"
-                      class="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition">
-                ❌ Reject
-              </button>
-            </div>
-          ` : ""}
-        `;
-        container.appendChild(card);
-      }
-
-      if (!container.hasChildNodes()) {
-        container.innerHTML = `<div class="text-center py-16 text-gray-400">📭 No ${currentBillType} ${currentBillStatus} requests</div>`;
-      }
+            ${!data.processed && currentBillStatus === "pending" ? `
+              <div class="flex gap-3 mt-4 action-buttons">
+                <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, true, this)"
+                        class="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
+                  ✅ Approve
+                </button>
+                <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, false, this)"
+                        class="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition">
+                  ❌ Reject
+                </button>
+              </div>
+            ` : ""}
+          `;
+          return card;
+        })
+      ).then((cards) => {
+        cards.filter(Boolean).forEach((c) => container.appendChild(c));
+        if (!container.hasChildNodes()) {
+          container.innerHTML = `<div class="text-center py-16 text-gray-400">📭 No ${currentBillType} ${currentBillStatus} requests</div>`;
+        }
+      });
     });
 }
 
+// Approve / Reject
 // Approve / Reject
 async function reviewBill(billId, userId, amount, approve, btnEl) {
   try {
@@ -931,16 +943,28 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
       });
     }
 
+    // ✅ Instantly move card to correct subtab
+    const card = document.getElementById(`bill-${billId}`);
+    if (card) {
+      // Remove from current view (Pending)
+      card.remove();
+    }
+
+    // Auto switch subtab
+    if (approve) {
+      switchBillStatus("successful");
+    } else {
+      switchBillStatus("failed");
+    }
+
     alert(approve ? "✅ Approved Successfully!" : "❌ Rejected & Refunded!");
   } catch (err) {
     console.error("Error reviewing bill:", err);
     alert("⚠️ Failed to process action.");
+    btnEl.disabled = false;
+    btnEl.innerText = approve ? "✅ Approve" : "❌ Reject";
   }
 }
-
-
-
-
 
 
 // REFERRAL FUNCTION 
@@ -1308,6 +1332,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

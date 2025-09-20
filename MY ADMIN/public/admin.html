@@ -57,6 +57,11 @@
         </button>
 
 
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('bills-admin')">
+          <i data-lucide="banknote" class="w-5 h-5"></i> Airtime and data
+        </button>
+
+
         
         <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('team')">
           <i data-lucide="banknote" class="w-5 h-5"></i> Referral Stat
@@ -297,6 +302,31 @@
 
 
 
+
+
+<!-- 📲 Airtime & Data Requests -->
+<div id="bills-admin" class="tab-section hidden p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-2xl font-extrabold text-gray-800 flex items-center gap-2">
+      <span class="text-blue-600">📲</span> Airtime & Data Requests
+    </h2>
+    <button onclick="loadBillsAdmin()" 
+            class="px-4 py-2 bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700 transition">
+      🔄 Refresh
+    </button>
+  </div>
+
+  <!-- Task Container -->
+  <div id="billsContainer" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3"></div>
+</div>
+
+
+
+
+      
+
+
 <!-- ========================
  📊 Referral Dashboard Section
  ======================== -->
@@ -501,6 +531,7 @@
 </body>
 
 </html>
+
 
 
 

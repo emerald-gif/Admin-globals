@@ -768,12 +768,9 @@ document.addEventListener("DOMContentLoaded", () => {
 // ===== Airtime/Data Admin Review =====
 
         
-
-
-
 let currentBillType = "airtime";   // airtime | data
 let currentBillStatus = "pending"; // pending | successful | failed
-let billsUnsub = null; // Firestore listener cleanup
+let billsUnsub = null; // listener cleanup
 
 // Switch between Airtime / Data
 function switchBillType(type) {
@@ -789,18 +786,39 @@ function switchBillStatus(status) {
   loadBillsAdmin();
 }
 
+// Update tab styles
+function updateBillTabs() {
+  document.getElementById("tab-airtime").className =
+    currentBillType === "airtime"
+      ? "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+      : "px-4 py-2 font-medium text-gray-500 hover:text-blue-600";
+  document.getElementById("tab-data").className =
+    currentBillType === "data"
+      ? "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+      : "px-4 py-2 font-medium text-gray-500 hover:text-blue-600";
+}
+
+function updateBillSubtabs() {
+  ["pending","successful","failed"].forEach(s => {
+    document.getElementById(`subtab-${s}`).className =
+      currentBillStatus === s
+        ? "px-5 py-2 text-sm font-medium rounded-full bg-blue-600 text-white shadow-md transition"
+        : "px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600";
+  });
+}
+
 // Load Airtime/Data Requests (Realtime)
 function loadBillsAdmin() {
   const container = document.getElementById("billsContainer");
+  container.innerHTML = `<div class="text-center py-12 text-gray-500 animate-pulse">Loading...</div>`;
 
-  // clear previous listener
-  if (billsUnsub) billsUnsub();
+  if (billsUnsub) billsUnsub(); // cleanup old listener
 
   billsUnsub = db.collection("bill_submissions")
     .orderBy("createdAt", "desc")
     .limit(50)
     .onSnapshot(async (snap) => {
-      container.innerHTML = ""; // clear old cards
+      container.innerHTML = "";
 
       if (snap.empty) {
         container.innerHTML = `<div class="text-center py-16 text-gray-400">📭 No ${currentBillType} ${currentBillStatus} requests</div>`;
@@ -812,25 +830,25 @@ function loadBillsAdmin() {
         const isData = data.type === "data";
         const type = isData ? "data" : "airtime";
 
-        // filter by Airtime/Data
+        // Filter by type
         if (type !== currentBillType) continue;
 
-        // fetch related transaction
-        const transSnap = await db.collection("Transaction")
+        // 🔹 Fetch matching transaction
+        let transSnap = await db.collection("Transaction")
           .where("userId", "==", data.userId)
           .where("amount", "==", data.amount)
           .orderBy("timestamp", "desc")
           .limit(1)
           .get();
 
-        const transStatus = transSnap.empty ? "processing" : transSnap.docs[0].data().status;
+        let transStatus = transSnap.empty ? "processing" : transSnap.docs[0].data().status;
 
-        // ✅ status filter rules
+        // 🔹 Filter by status
         if (currentBillStatus === "pending" && data.processed) continue;
         if (currentBillStatus === "successful" && (!data.processed || transStatus !== "successful")) continue;
         if (currentBillStatus === "failed" && (!data.processed || transStatus !== "failed")) continue;
 
-        // 🟢 status badge
+        // 🔹 Status badge
         const statusBadge =
           currentBillStatus === "successful"
             ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Successful</span>`
@@ -838,7 +856,7 @@ function loadBillsAdmin() {
               ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>`
               : `<span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>`;
 
-        // 💳 card
+        // 🔹 Card
         const card = document.createElement("div");
         card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
 
@@ -871,7 +889,6 @@ function loadBillsAdmin() {
             </div>
           ` : ""}
         `;
-
         container.appendChild(card);
       }
 
@@ -880,6 +897,47 @@ function loadBillsAdmin() {
       }
     });
 }
+
+// Approve / Reject
+async function reviewBill(billId, userId, amount, approve, btnEl) {
+  try {
+    btnEl.disabled = true;
+    btnEl.innerText = approve ? "Approving..." : "Rejecting...";
+
+    const billRef = db.collection("bill_submissions").doc(billId);
+    const userRef = db.collection("users").doc(userId);
+
+    // ✅ mark as processed
+    await billRef.update({ processed: true });
+
+    // ✅ update matching Transaction
+    const transRef = db.collection("Transaction")
+      .where("userId", "==", userId)
+      .where("amount", "==", amount)
+      .where("status", "==", "processing")
+      .limit(1);
+
+    const transSnap = await transRef.get();
+    if (!transSnap.empty) {
+      await transSnap.docs[0].ref.update({
+        status: approve ? "successful" : "failed"
+      });
+    }
+
+    // ✅ refund if rejected
+    if (!approve) {
+      await userRef.update({
+        balance: firebase.firestore.FieldValue.increment(amount)
+      });
+    }
+
+    alert(approve ? "✅ Approved Successfully!" : "❌ Rejected & Refunded!");
+  } catch (err) {
+    console.error("Error reviewing bill:", err);
+    alert("⚠️ Failed to process action.");
+  }
+}
+
 
 
 
@@ -1250,6 +1308,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -305,21 +305,65 @@
 
 
 <!-- 📲 Airtime & Data Requests -->
+<!-- ===== Airtime & Data Admin (2025 UI) ===== -->
 <div id="bills-admin" class="tab-section hidden p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
   <!-- Header -->
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-2xl font-extrabold text-gray-800 flex items-center gap-2">
-      <span class="text-blue-600">📲</span> Airtime & Data Requests
-    </h2>
-    <button onclick="loadBillsAdmin()" 
-            class="px-4 py-2 bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700 transition">
-      🔄 Refresh
-    </button>
+    <div>
+      <h2 class="text-2xl font-extrabold text-gray-800 flex items-center gap-3">
+        <span class="text-blue-600 text-xl">📲</span>
+        Airtime & Data Review
+      </h2>
+      <p class="text-sm text-gray-500 mt-1">Approve or reject customer airtime / data requests. Refunds are automatic on failure.</p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button id="billsRefreshBtn" class="px-4 py-2 bg-white border rounded-xl shadow hover:bg-gray-50">🔄 Refresh</button>
+    </div>
   </div>
 
-  <!-- Task Container -->
+  <!-- Primary Tabs (Airtime / Data) -->
+  <div class="flex gap-3 mb-4">
+    <button id="billsTabAirtime" class="bills-tab tab-active px-4 py-2 rounded-lg bg-blue-600 text-white">Airtime</button>
+    <button id="billsTabData" class="bills-tab px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Data</button>
+  </div>
+
+  <!-- Sub-filter: Pending / Successful / Failed -->
+  <div class="flex gap-2 items-center mb-6" id="billsSubtabs">
+    <button id="billsFilterPending" class="bills-filter px-3 py-1 rounded-md bg-yellow-50 text-yellow-700">⏳ Pending</button>
+    <button id="billsFilterSuccessful" class="bills-filter px-3 py-1 rounded-md bg-green-50 text-green-700">✅ Successful</button>
+    <button id="billsFilterFailed" class="bills-filter px-3 py-1 rounded-md bg-red-50 text-red-700">❌ Failed</button>
+  </div>
+
+  <!-- Cards grid -->
   <div id="billsContainer" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3"></div>
 </div>
+
+<!-- Confirm modal (Approve / Reject) -->
+<div id="billConfirmModal" class="hidden fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-5">
+    <h3 id="billConfirmTitle" class="text-lg font-bold mb-2">Confirm</h3>
+    <p id="billConfirmText" class="text-sm text-gray-600 mb-4"></p>
+
+    <div id="billConfirmReasonWrap" class="mb-4 hidden">
+      <label class="text-sm text-gray-700 mb-2 block">Reject reason (optional)</label>
+      <textarea id="billConfirmReason" class="w-full p-3 border rounded-lg" rows="3" placeholder="e.g. invalid number, provider error"></textarea>
+    </div>
+
+    <div class="flex justify-end gap-3">
+      <button id="billConfirmCancel" class="px-4 py-2 rounded-lg bg-gray-100">Cancel</button>
+      <button id="billConfirmOk" class="px-4 py-2 rounded-lg bg-blue-600 text-white">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* small UI polish consistent with your other admin styles */
+  .bills-tab { font-weight: 700; transition: all .12s ease; cursor: pointer; }
+  .bills-tab.tab-active { box-shadow: 0 6px 18px rgba(37,99,235,0.18); }
+  .bills-filter { cursor:pointer; transition:all .12s ease; font-weight:600; }
+  .task-badge { display:inline-block; padding:6px 10px; border-radius:999px; font-weight:700; font-size:12px; }
+</style>
 
 
 
@@ -531,6 +575,7 @@
 </body>
 
 </html>
+
 
 
 

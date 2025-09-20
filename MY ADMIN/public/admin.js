@@ -767,143 +767,288 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ===== Airtime/Data Admin Review =====
 // ===== Airtime/Data Admin Review =====
+/* ====== Airtime & Data Admin (polished, safe) ====== */
+
+// Configs / constants
+const BILL_COLLECTION = "bill_submissions";
+const TRANSACTION_COLLECTIONS = ["Transaction", "transaction", "transactions"]; // try common names
+const USERS_COLLECTION = "users";
+
+// UI state
+let currentBillsType = "airtime";   // "airtime" | "data"
+let currentBillsStatus = "pending"; // "pending" | "successful" | "failed"
+let currentReviewContext = null;    // holds { docId, userId, amount, success } while modal open
+
+/* ----------------- Helpers ----------------- */
+function mapStatusToStored(s) {
+  if (s === "pending") return "submitted";
+  if (s === "successful") return "successful";
+  if (s === "failed") return "failed";
+  return s;
+}
+function fmtCurrency(n){ return "₦" + (Number(n || 0)).toLocaleString(); }
+function safeDb(){ return (typeof db !== "undefined") ? db : firebase.firestore(); }
+
+/* ----------------- UI wiring & initialization ----------------- */
+function _setActiveTabButtons() {
+  document.querySelectorAll(".bills-tab").forEach(b=>b.classList.remove("tab-active"));
+  if (currentBillsType === "airtime") document.getElementById("billsTabAirtime").classList.add("tab-active");
+  else document.getElementById("billsTabData").classList.add("tab-active");
+
+  document.querySelectorAll(".bills-filter").forEach(b=>b.classList.remove("bg-blue-600","text-white","bg-yellow-50","text-yellow-700","bg-green-50","text-green-700","bg-red-50","text-red-700"));
+  // color the active filter nicely
+  if (currentBillsStatus === "pending") {
+    document.getElementById("billsFilterPending").classList.add("bg-yellow-100","text-yellow-800");
+  } else if (currentBillsStatus === "successful") {
+    document.getElementById("billsFilterSuccessful").classList.add("bg-green-100","text-green-800");
+  } else if (currentBillsStatus === "failed") {
+    document.getElementById("billsFilterFailed").classList.add("bg-red-100","text-red-800");
+  }
+}
+
+/* hook buttons */
+document.getElementById("billsTabAirtime")?.addEventListener("click", ()=>{ currentBillsType="airtime"; _setActiveTabButtons(); loadBillsAdmin(); });
+document.getElementById("billsTabData")?.addEventListener("click", ()=>{ currentBillsType="data"; _setActiveTabButtons(); loadBillsAdmin(); });
+
+document.getElementById("billsFilterPending")?.addEventListener("click", ()=>{ currentBillsStatus="pending"; _setActiveTabButtons(); loadBillsAdmin(); });
+document.getElementById("billsFilterSuccessful")?.addEventListener("click", ()=>{ currentBillsStatus="successful"; _setActiveTabButtons(); loadBillsAdmin(); });
+document.getElementById("billsFilterFailed")?.addEventListener("click", ()=>{ currentBillsStatus="failed"; _setActiveTabButtons(); loadBillsAdmin(); });
+
+document.getElementById("billsRefreshBtn")?.addEventListener("click", ()=> loadBillsAdmin());
+
+/* ----------------- Confirm modal helpers ----------------- */
+function openBillConfirmModal({ title, text, showReason=false, context }) {
+  currentReviewContext = context || null;
+  document.getElementById("billConfirmTitle").innerText = title;
+  document.getElementById("billConfirmText").innerText = text;
+  document.getElementById("billConfirmReasonWrap").style.display = showReason ? "block" : "none";
+  document.getElementById("billConfirmReason").value = "";
+  document.getElementById("billConfirmModal").classList.remove("hidden");
+}
+function closeBillConfirmModal() {
+  currentReviewContext = null;
+  document.getElementById("billConfirmModal").classList.add("hidden");
+}
+document.getElementById("billConfirmCancel")?.addEventListener("click", closeBillConfirmModal);
+document.getElementById("billConfirmOk")?.addEventListener("click", async () => {
+  // run the action stored in currentReviewContext
+  if (!currentReviewContext) { closeBillConfirmModal(); return; }
+  const reason = document.getElementById("billConfirmReason")?.value?.trim() || "";
+  const { docId, userId, amount, success } = currentReviewContext;
+  closeBillConfirmModal();
+  await reviewBill(docId, userId, amount, success, reason);
+});
+
+/* ----------------- Core: load bills ----------------- */
 async function loadBillsAdmin() {
   const container = document.getElementById("billsContainer");
-  container.innerHTML = `
-    <div class="text-center py-12 text-gray-500 animate-pulse">
-      Loading requests...
-    </div>
-  `;
+  if (!container) return console.warn("No #billsContainer found");
+
+  container.innerHTML = `<div class="text-center py-12 text-gray-500 animate-pulse">Loading requests...</div>`;
+  _setActiveTabButtons();
 
   try {
-    const snap = await db.collection("bill_submissions")
-      .orderBy("createdAt", "desc")
-      .limit(30)
-      .get();
+    const dbRef = safeDb();
+    const desiredStatus = mapStatusToStored(currentBillsStatus);
 
+    // Query by status only (no composite index). We'll filter "type" client-side.
+    let q = dbRef.collection(BILL_COLLECTION)
+                .where("status", "==", desiredStatus)
+                .orderBy("createdAt", "desc")
+                .limit(200);
+
+    const snap = await q.get();
     if (snap.empty) {
-      container.innerHTML = `
-        <div class="text-center py-16 text-gray-400">
-          <p class="text-lg">📭 No Airtime/Data Requests Found</p>
-        </div>
-      `;
+      container.innerHTML = `<div class="text-center py-16 text-gray-400"><p class="text-lg">📭 No ${currentBillsType} ${currentBillsStatus} requests</p></div>`;
       return;
     }
 
-    container.innerHTML = "";
-    snap.forEach(doc => {
-      const data = doc.data();
-      const type = data.type === "data" ? "Data" : "Airtime";
+    // Collect and filter by type client-side to avoid composite indexes
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const filtered = docs.filter(d => {
+      if (currentBillsType === "data") return d.type === "data";
+      // airtime: treat as no type or type !== 'data'
+      return !d.type || d.type !== "data";
+    });
 
-      // 🟢 status badge
-      const statusBadge = data.status === "successful"
+    if (!filtered.length) {
+      container.innerHTML = `<div class="text-center py-16 text-gray-400"><p class="text-lg">📭 No ${currentBillsType} ${currentBillsStatus} requests</p></div>`;
+      return;
+    }
+
+    // Render cards
+    container.innerHTML = "";
+    filtered.forEach(d => {
+      const statusBadge = d.status === "successful"
         ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Successful</span>`
-        : data.status === "failed"
+        : d.status === "failed"
           ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>`
           : `<span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>`;
 
-      // 💳 card UI
       const card = document.createElement("div");
       card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
+
+      // prepare plan info for data type
+      const planHtml = (d.type === "data" && d.planLabel) ? `<p><b>📦 Plan:</b> ${escapeHtml(d.planLabel)}</p>` : "";
 
       card.innerHTML = `
         <div>
           <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-semibold uppercase tracking-wide text-gray-500">${type}</span>
+            <span class="text-sm font-semibold uppercase tracking-wide text-gray-500">${escapeHtml(currentBillsType)}</span>
             ${statusBadge}
           </div>
-          <h3 class="text-lg font-bold text-gray-800 mb-2">₦${Number(data.amount).toLocaleString()}</h3>
+
+          <h3 class="text-lg font-bold text-gray-800 mb-2">${fmtCurrency(d.amount)}</h3>
 
           <div class="space-y-1 text-sm text-gray-600">
-            <p><b>📱 Phone:</b> ${data.phone}</p>
-            <p><b>🌐 Network:</b> ${data.network || data.networkLabel || "N/A"}</p>
-            ${data.planLabel ? `<p><b>📦 Plan:</b> ${data.planLabel}</p>` : ""}
-            <p><b>👤 User ID:</b> <span class="font-mono">${data.userId}</span></p>
-            <p><b>🕒 Date:</b> ${data.createdAt?.toDate().toLocaleString() || "N/A"}</p>
+            <p><b>📱 Phone:</b> ${escapeHtml(d.phone || "N/A")}</p>
+            <p><b>🌐 Network:</b> ${escapeHtml(d.network || d.networkLabel || "N/A")}</p>
+            ${planHtml}
+            <p><b>👤 User ID:</b> <span class="font-mono">${escapeHtml(d.userId || "N/A")}</span></p>
+            <p><b>🕒 Date:</b> ${d.createdAt?.toDate ? d.createdAt.toDate().toLocaleString() : "N/A"}</p>
+            <p class="text-xs text-gray-400 mt-2"><b>Doc:</b> ${d.id}</p>
           </div>
         </div>
 
-        ${!data.processed ? `
+        ${d.processed ? `<div class="mt-4 text-sm text-gray-500">Processed: ${d.processed}</div>` : `
           <div class="flex gap-3 mt-4">
-            <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, true)"
-                    class="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
-              ✅ Approve
-            </button>
-            <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, false)"
-                    class="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition">
-              ❌ Reject
-            </button>
+            <button data-doc="${d.id}" data-user="${d.userId}" data-amt="${d.amount}" class="approve-btn flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">✅ Approve</button>
+            <button data-doc="${d.id}" data-user="${d.userId}" data-amt="${d.amount}" class="reject-btn flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition">❌ Reject</button>
           </div>
-        ` : ""}
+        `}
       `;
 
       container.appendChild(card);
     });
+
+    // attach handlers (delegation)
+    container.querySelectorAll(".approve-btn").forEach(btn=>{
+      btn.addEventListener("click", (ev)=>{
+        const docId = btn.dataset.doc;
+        const userId = btn.dataset.user;
+        const amt = Number(btn.dataset.amt || 0);
+        openBillConfirmModal({
+          title: "Approve Request",
+          text: `Approve and mark as successful? This will mark the request successful and update the transaction record.`,
+          showReason: false,
+          context: { docId, userId, amount: amt, success: true }
+        });
+      });
+    });
+    container.querySelectorAll(".reject-btn").forEach(btn=>{
+      btn.addEventListener("click", (ev)=>{
+        const docId = btn.dataset.doc;
+        const userId = btn.dataset.user;
+        const amt = Number(btn.dataset.amt || 0);
+        openBillConfirmModal({
+          title: "Reject Request",
+          text: `Reject this request? This will mark the request failed, update the transaction record, and refund the user.`,
+          showReason: true,
+          context: { docId, userId, amount: amt, success: false }
+        });
+      });
+    });
+
   } catch (err) {
     console.error("Error loading bills:", err);
-    container.innerHTML = `
-      <div class="text-center py-12 text-red-500">
-        ⚠️ Failed to load requests.
-      </div>
-    `;
+    container.innerHTML = `<div class="text-center py-12 text-red-500">⚠️ Failed to load requests.</div>`;
   }
 }
 
-// --- Approve / Reject Logic ---
-async function reviewBill(docId, userId, amount, success) {
-  console.log("⚡ reviewBill clicked:", { docId, userId, amount, success });
-
-  const billRef = db.collection("bill_submissions").doc(docId);
+/* ----------------- Core: Approve / Reject (transactionally) ----------------- */
+async function reviewBill(docId, userId, amount, success, reason = "") {
+  // safety
+  if (!docId) return alert("Missing docId");
+  const dbRef = safeDb();
+  const billRef = dbRef.collection(BILL_COLLECTION).doc(docId);
+  const adminUid = (firebase.auth().currentUser && firebase.auth().currentUser.uid) ? firebase.auth().currentUser.uid : "admin";
 
   try {
-    await db.runTransaction(async (tx) => {
+    // run transaction
+    await dbRef.runTransaction(async tx => {
       const billSnap = await tx.get(billRef);
       if (!billSnap.exists) throw new Error("Bill not found");
+      const bill = billSnap.data();
+      if (bill.processed) throw new Error("Already processed");
 
-      // ✅ Update bill
+      // update bill doc
+      const newStatus = success ? "successful" : "failed";
       tx.update(billRef, {
         processed: true,
-        status: success ? "successful" : "failed"
+        status: newStatus,
+        reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        reviewedBy: adminUid,
+        reviewReason: reason || ""
       });
 
-      // 🔎 Find related transaction
-      const txSnap = await db.collection("Transaction")
-        .where("userId", "==", userId)
-        .where("amount", "==", amount)
-        .where("status", "==", "processing")
-        .limit(1)
-        .get();
-
-      if (!txSnap.empty) {
-        tx.update(txSnap.docs[0].ref, {
-          status: success ? "successful" : "failed"
+      // find Transaction doc (try a few common names)
+      let txDoc = null;
+      for (const colName of TRANSACTION_COLLECTIONS) {
+        const found = await dbRef.collection(colName)
+          .where("userId", "==", userId)
+          .where("amount", "==", amount)
+          .where("status", "==", "processing")
+          .limit(1)
+          .get();
+        if (!found.empty) { txDoc = found.docs[0]; break; }
+      }
+      if (txDoc) {
+        tx.update(txDoc.ref, {
+          status: success ? "successful" : "failed",
+          reviewedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
 
-      // 💰 Refund if failed
+      // refund if failed
       if (!success) {
-        const userRef = db.collection("users").doc(userId);
-        const uSnap = await tx.get(userRef);
-        if (uSnap.exists) {
-          const bal = uSnap.data().balance || 0;
-          tx.update(userRef, { balance: bal + amount });
+        const userRef = dbRef.collection(USERS_COLLECTION).doc(userId);
+        const userSnap = await tx.get(userRef);
+        if (userSnap.exists) {
+          tx.update(userRef, { balance: firebase.firestore.FieldValue.increment(Number(amount || 0)) });
+        } else {
+          // user not found: we still let bill be marked failed but log
+          console.warn("User not found for refund", userId);
         }
       }
     });
 
-    alert(success ? "✅ Marked Successful" : "❌ Marked Failed + Refunded");
-    loadBillsAdmin(); // refresh UI
+    // success UI
+    if (success) alert("✅ Marked successful");
+    else alert("❌ Marked failed and refunded user");
+
+    // reload
+    loadBillsAdmin();
   } catch (err) {
-    console.error("Review error:", err);
-    alert("⚠️ Failed to update");
+    console.error("Review transaction failed:", err);
+    alert("⚠️ Action failed: " + (err?.message || err));
   }
 }
 
-// --- Expose globally for onclick ---
+/* ----------------- small utility ----------------- */
+function escapeHtml(s){
+  if (!s && s !== 0) return "";
+  return String(s).replace(/[&<>"']/g, function (m) {
+    return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m];
+  });
+}
+
+/* ----------------- Expose global functions so onclick can call them ----------------- */
 window.loadBillsAdmin = loadBillsAdmin;
 window.reviewBill = reviewBill;
+window.switchBillsTab = function(t){ currentBillsType = t; _setActiveTabButtons(); loadBillsAdmin(); };
+window.setBillsFilter = function(s){ currentBillsStatus = s; _setActiveTabButtons(); loadBillsAdmin(); };
 
-
+/* ----------------- Auto-load when admin area opens (optional) ----------------- */
+/* If you call switchTab('bills-admin') from your sidebar, you'll want to call loadBillsAdmin() there.
+   But as a convenience also trigger once on DOMContentLoaded so the list is available quickly. */
+window.addEventListener("DOMContentLoaded", ()=>{
+  // default state
+  currentBillsType = "airtime";
+  currentBillsStatus = "pending";
+  _setActiveTabButtons();
+  // only load if the bills-admin section exists
+  if (document.getElementById("bills-admin")) loadBillsAdmin();
+}); 
 
 
 
@@ -1270,6 +1415,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ✅ Expose admin functions globally for inline onclick
 window.loadBillsAdmin = loadBillsAdmin;
 window.reviewBill = reviewBill;
+
 
 
 

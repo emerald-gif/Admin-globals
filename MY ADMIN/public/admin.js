@@ -771,8 +771,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Configs / constants
 const BILL_COLLECTION = "bill_submissions";
-const TRANSACTION_COLLECTIONS = ["Transaction", "transaction", "transactions"]; // try common names
-const USERS_COLLECTION = "users";
+const TRANSACTION_COLLECTIONS = "Transaction"; // try common names
+
 
 // UI state
 let currentBillsType = "airtime";   // "airtime" | "data"
@@ -1415,6 +1415,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ✅ Expose admin functions globally for inline onclick
 window.loadBillsAdmin = loadBillsAdmin;
 window.reviewBill = reviewBill;
+
 
 
 

@@ -321,19 +321,29 @@
   <!-- Tabs: Airtime / Data -->
   <div class="flex gap-4 border-b mb-6">
     <button onclick="switchBillType('airtime')" id="tab-airtime"
-      class="px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600">Airtime</button>
+      class="px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600">
+      Airtime
+    </button>
     <button onclick="switchBillType('data')" id="tab-data"
-      class="px-4 py-2 font-medium text-gray-500 hover:text-blue-600">Data</button>
+      class="px-4 py-2 font-medium text-gray-500 hover:text-blue-600">
+      Data
+    </button>
   </div>
 
   <!-- Subtabs: Pending / Successful / Failed -->
-  <div class="flex gap-3 mb-6 bg-gray-100 p-1 rounded-full w-fit">
+  <div class="flex gap-3 mb-6 bg-gray-100 p-1 rounded-full w-fit shadow-inner">
     <button onclick="switchBillStatus('pending')" id="subtab-pending"
-      class="px-5 py-2 text-sm font-medium rounded-full bg-blue-600 text-white shadow-md transition">Pending</button>
+      class="px-5 py-2 text-sm font-medium rounded-full bg-blue-600 text-white shadow-md transition">
+      Pending
+    </button>
     <button onclick="switchBillStatus('successful')" id="subtab-successful"
-      class="px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600">Successful</button>
+      class="px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600 transition">
+      Successful
+    </button>
     <button onclick="switchBillStatus('failed')" id="subtab-failed"
-      class="px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600">Failed</button>
+      class="px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600 transition">
+      Failed
+    </button>
   </div>
 
   <!-- Requests Grid -->
@@ -548,6 +558,7 @@
 </body>
 
 </html>
+
 
 
 

@@ -763,7 +763,98 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-  // REFERRAL FUNCTION 
+ 
+
+// ===== Airtime/Data Admin Review =====
+async function loadBillsAdmin() {
+  const container = document.getElementById("billsContainer");
+  container.innerHTML = `
+    <div class="text-center py-12 text-gray-500 animate-pulse">
+      Loading requests...
+    </div>
+  `;
+
+  try {
+    const snap = await db.collection("bill_submissions")
+      .orderBy("createdAt", "desc")
+      .limit(30)
+      .get();
+
+    if (snap.empty) {
+      container.innerHTML = `
+        <div class="text-center py-16 text-gray-400">
+          <p class="text-lg">📭 No Airtime/Data Requests Found</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = "";
+    snap.forEach(doc => {
+      const data = doc.data();
+      const type = data.type === "data" ? "Data" : "Airtime";
+
+      // 🟢 status badge
+      const statusBadge = data.status === "successful"
+        ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Successful</span>`
+        : data.status === "failed"
+          ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>`
+          : `<span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>`;
+
+      // 💳 card UI
+      const card = document.createElement("div");
+      card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
+
+      card.innerHTML = `
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-semibold uppercase tracking-wide text-gray-500">${type}</span>
+            ${statusBadge}
+          </div>
+          <h3 class="text-lg font-bold text-gray-800 mb-2">₦${Number(data.amount).toLocaleString()}</h3>
+
+          <div class="space-y-1 text-sm text-gray-600">
+            <p><b>📱 Phone:</b> ${data.phone}</p>
+            <p><b>🌐 Network:</b> ${data.network || data.networkLabel || "N/A"}</p>
+            ${data.planLabel ? `<p><b>📦 Plan:</b> ${data.planLabel}</p>` : ""}
+            <p><b>👤 User ID:</b> <span class="font-mono">${data.userId}</span></p>
+            <p><b>🕒 Date:</b> ${data.createdAt?.toDate().toLocaleString() || "N/A"}</p>
+          </div>
+        </div>
+
+        ${!data.processed ? `
+          <div class="flex gap-3 mt-4">
+            <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, true)"
+                    class="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
+              ✅ Approve
+            </button>
+            <button onclick="reviewBill('${doc.id}', '${data.userId}', ${data.amount}, false)"
+                    class="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition">
+              ❌ Reject
+            </button>
+          </div>
+        ` : ""}
+      `;
+
+      container.appendChild(card);
+    });
+  } catch (err) {
+    console.error("Error loading bills:", err);
+    container.innerHTML = `
+      <div class="text-center py-12 text-red-500">
+        ⚠️ Failed to load requests.
+      </div>
+    `;
+  }
+}
+
+
+
+
+
+
+
+// REFERRAL FUNCTION 
 
 
 
@@ -1120,6 +1211,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadTaskSubmissions();
 
 });
+
 
 
 

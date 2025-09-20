@@ -807,7 +807,6 @@ function loadBillsAdmin() {
         return;
       }
 
-      // loop through results
       for (const doc of snap.docs) {
         const data = doc.data();
         const isData = data.type === "data";
@@ -816,7 +815,7 @@ function loadBillsAdmin() {
         // filter by Airtime/Data
         if (type !== currentBillType) continue;
 
-        // fetch transaction once
+        // fetch related transaction
         const transSnap = await db.collection("Transaction")
           .where("userId", "==", data.userId)
           .where("amount", "==", data.amount)
@@ -826,21 +825,22 @@ function loadBillsAdmin() {
 
         const transStatus = transSnap.empty ? "processing" : transSnap.docs[0].data().status;
 
-        // filter by status logic
+        // ✅ status filter rules
         if (currentBillStatus === "pending" && data.processed) continue;
         if (currentBillStatus === "successful" && (!data.processed || transStatus !== "successful")) continue;
         if (currentBillStatus === "failed" && (!data.processed || transStatus !== "failed")) continue;
 
-        // card UI
-        const card = document.createElement("div");
-        card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
-
+        // 🟢 status badge
         const statusBadge =
           currentBillStatus === "successful"
             ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Successful</span>`
             : currentBillStatus === "failed"
               ? `<span class="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>`
               : `<span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>`;
+
+        // 💳 card
+        const card = document.createElement("div");
+        card.className = "rounded-2xl bg-white shadow-md hover:shadow-lg transition p-5 flex flex-col justify-between";
 
         card.innerHTML = `
           <div>
@@ -871,6 +871,7 @@ function loadBillsAdmin() {
             </div>
           ` : ""}
         `;
+
         container.appendChild(card);
       }
 
@@ -879,8 +880,6 @@ function loadBillsAdmin() {
       }
     });
 }
-
-
 
 
 
@@ -1251,6 +1250,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

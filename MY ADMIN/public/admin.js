@@ -967,6 +967,18 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 // REFERRAL FUNCTION 
 
 
@@ -1206,6 +1218,435 @@ async function loadWithdrawals() {
 
 
 
+// --- CHECK IN FUNCTION 
+
+
+/* Admin Check-in Module
+   - Exposes startAdminCheckin() on window
+   - Uses:
+     - db (firebase.firestore())
+     - users collection for user metadata
+     - checkins/{uid}/cycles for cycles (matches your structure)
+*/
+(function adminCheckinModule () {
+  const CYCLE_LENGTH = 7;
+  const REWARD_DAY = 50;
+  const REWARD_LAST = 300;
+
+  // ----- helpers -----
+  function todayStrLocal() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function dayDiff(startDateStr, dateStr) {
+    if (!startDateStr) return 9999;
+    const [sy, sm, sd] = String(startDateStr).split('-').map(Number);
+    const [ty, tm, td] = String(dateStr).split('-').map(Number);
+    const s = new Date(sy, sm - 1, sd);
+    const t = new Date(ty, tm - 1, td);
+    return Math.floor((t - s) / (1000 * 60 * 60 * 24));
+  }
+  function fmtNaira(n) { return '₦' + Number(n || 0).toLocaleString(); }
+  function cyclesRef(uid) { return db.collection('checkins').doc(uid).collection('cycles'); }
+
+  // ----- DOM refs -----
+  const el = {
+    totalUsers: document.getElementById('sum-total-users'),
+    checkedToday: document.getElementById('sum-checked-today'),
+    totalCheckins: document.getElementById('sum-total-checkins'),
+    totalRewards: document.getElementById('sum-total-rewards'),
+    tableBody: document.getElementById('admin-table-body'),
+    search: document.getElementById('admin-search'),
+    viewSelect: document.getElementById('admin-view-select'),
+    filterBtn: document.getElementById('admin-filter-btn'),
+    fromDate: document.getElementById('admin-from'),
+    toDate: document.getElementById('admin-to'),
+    realtimeToggle: document.getElementById('admin-realtime-toggle'),
+    exportCsvBtn: document.getElementById('admin-export-csv'),
+    scanAllBtn: document.getElementById('admin-scan-all'),
+    modal: document.getElementById('admin-user-modal'),
+    modalUid: document.getElementById('modal-uid'),
+    modalContent: document.getElementById('modal-content')
+  };
+
+  let usersCache = []; // { uid, name, email }
+  let statsCache = []; // computed per-user stats
+
+  // ----- compute stats for a single user (reads their cycles subcollection) -----
+  async function computeUserStats(uid, userDoc) {
+    const today = todayStrLocal();
+    const cyclesSnap = await cyclesRef(uid).get();
+    let totalCheckins = 0;
+    let completedCycles = 0;
+    let totalRewards = 0;
+    let lastCheckinTS = null;
+    let checkedToday = false;
+
+    cyclesSnap.forEach(cDoc => {
+      const d = cDoc.data();
+      const days = Array.isArray(d.days) ? d.days : [];
+      // total checkins for this cycle
+      const cnt = days.filter(Boolean).length;
+      totalCheckins += cnt;
+
+      // completed cycles and rewards
+      if (d.status === 'received') {
+        completedCycles += 1;
+        totalRewards += Number(d.rewardAmount || REWARD_LAST);
+      }
+
+      // last checked day in this cycle
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (days[i]) {
+          // compute timestamp of that day
+          try {
+            const s = new Date((d.cycleStartDate || today) + 'T00:00:00');
+            const dt = new Date(s.getTime() + (i * 24 * 60 * 60 * 1000));
+            if (!lastCheckinTS || dt > lastCheckinTS) lastCheckinTS = dt;
+          } catch (e) { /* ignore bad date formats */ }
+          break;
+        }
+      }
+
+      // check if user checked in today (for latest cycle position)
+      const diff = dayDiff(d.cycleStartDate || today, today);
+      if (diff >= 0 && diff < CYCLE_LENGTH && days[diff]) checkedToday = true;
+    });
+
+    return {
+      uid,
+      displayName: (userDoc && userDoc.data && (userDoc.data().displayName || userDoc.data().name)) || ((userDoc && userDoc.data && userDoc.data().email) ? userDoc.data().email.split('@')[0] : '—'),
+      email: (userDoc && userDoc.data && userDoc.data().email) || '—',
+      checkedToday,
+      totalCheckins,
+      completedCycles,
+      totalRewards,
+      lastCheckin: lastCheckinTS ? lastCheckinTS.toLocaleString() : '—'
+    };
+  }
+
+  // ----- fetch users list from users collection -----
+  async function loadAllUsers(limit = 500) {
+    usersCache = [];
+    const snap = await db.collection('users').limit(limit).get();
+    snap.forEach(d => usersCache.push({ uid: d.id, doc: d }));
+    return usersCache;
+  }
+
+  // ----- build table row for a stats object -----
+  function renderUserRow(s) {
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-white/3';
+
+    const td = (txt, classes = '') => {
+      const e = document.createElement('td');
+      e.className = 'px-3 py-2 ' + classes;
+      e.innerHTML = txt;
+      return e;
+    };
+
+    const todayBadge = s.checkedToday ? '<span class="px-2 py-1 rounded-full bg-green-600 text-black text-xs font-semibold">YES</span>' : '<span class="px-2 py-1 rounded-full bg-white/6 text-xs">NO</span>';
+
+    tr.appendChild(td(`<div class="text-xs font-mono">${s.uid}</div>`));
+    tr.appendChild(td(`<div class="font-medium">${escapeHtml(s.displayName)}</div><div class="text-xs text-slate-300">${escapeHtml(s.email)}</div>`));
+    tr.appendChild(td(todayBadge));
+    tr.appendChild(td(`<div class="font-semibold">${s.totalCheckins}</div>`));
+    tr.appendChild(td(`<div class="">${s.completedCycles}</div>`));
+    tr.appendChild(td(`<div class="font-bold">${fmtNaira(s.totalRewards)}</div>`));
+    tr.appendChild(td(`<div class="text-xs text-slate-300">${s.lastCheckin}</div>`));
+
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'px-3 py-1 bg-white/6 rounded-lg';
+    viewBtn.innerText = 'Details';
+    viewBtn.onclick = () => showUserDetails(s.uid);
+
+    const actionTd = document.createElement('td');
+    actionTd.className = 'px-3 py-2';
+    actionTd.appendChild(viewBtn);
+    tr.appendChild(actionTd);
+
+    return tr;
+  }
+
+  // ----- render table with optional client-side filters -----
+  function renderTable(data) {
+    statsCache = data;
+    el.tableBody.innerHTML = '';
+    const query = (el.search && el.search.value || '').trim().toLowerCase();
+    const view = el.viewSelect.value;
+
+    let filtered = data.filter(s => {
+      if (query) {
+        return (s.uid + ' ' + s.displayName + ' ' + s.email).toLowerCase().includes(query);
+      }
+      return true;
+    });
+
+    if (view === 'today') filtered = filtered.filter(s => s.checkedToday);
+    if (view === 'completed') filtered = filtered.filter(s => s.completedCycles > 0);
+
+    filtered.forEach(s => el.tableBody.appendChild(renderUserRow(s)));
+  }
+
+  // ----- show per-user modal details -----
+  async function showUserDetails(uid) {
+    el.modalUid.textContent = 'User: ' + uid;
+    el.modalContent.innerHTML = '<div class="text-sm text-slate-400">Loading cycles…</div>';
+    el.modal.classList.remove('hidden');
+
+    const userDoc = await db.collection('users').doc(uid).get();
+    const cyclesSnap = await cyclesRef(uid).orderBy('createdAt','desc').get();
+    if (cyclesSnap.empty) {
+      el.modalContent.innerHTML = '<div class="text-sm text-slate-400">No cycles found for this user.</div>';
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'space-y-4';
+
+    cyclesSnap.forEach(doc => {
+      const d = doc.data();
+      const wrap = document.createElement('div');
+      wrap.className = 'p-3 rounded-xl bg-white/5 border border-white/6';
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between mb-2';
+      header.innerHTML = `<div class="font-semibold">${d.cycleStartDate || '—'}</div><div class="text-xs text-slate-300">${d.status || '—'}</div>`;
+      wrap.appendChild(header);
+
+      // days visualization
+      const daysRow = document.createElement('div');
+      daysRow.className = 'flex gap-2 flex-wrap';
+      const days = Array.isArray(d.days) ? d.days : [];
+      for (let i = 0; i < Math.max(CYCLE_LENGTH, days.length); i++) {
+        const pill = document.createElement('div');
+        pill.className = 'text-xs w-12 text-center py-2 rounded-lg';
+        const checked = !!days[i];
+        pill.textContent = `${i + 1}d`;
+        if (checked) {
+          pill.className += ' bg-green-600 text-black';
+        } else {
+          pill.className += ' bg-white/6';
+        }
+        daysRow.appendChild(pill);
+      }
+      wrap.appendChild(daysRow);
+
+      const footer = document.createElement('div');
+      footer.className = 'mt-3 flex items-center justify-between text-sm';
+      footer.innerHTML = `<div>Reward: <span class="font-semibold">${fmtNaira(d.rewardAmount || REWARD_LAST)}</span></div><div class="text-slate-300">${d.updatedAt && d.updatedAt.toDate ? d.updatedAt.toDate().toLocaleString() : ''}</div>`;
+      wrap.appendChild(footer);
+
+      container.appendChild(wrap);
+    });
+
+    el.modalContent.innerHTML = '';
+    el.modalContent.appendChild(container);
+  }
+
+  // ----- summary scan using collectionGroup('cycles') -----
+  async function recalcSummaryScan() {
+    // NOTE: collectionGroup('cycles') returns all cycles across users.
+    // If you have tens of thousands of cycles this will be heavy — consider a Cloud Function aggregator.
+    el.totalUsers && (el.totalUsers.textContent = '…');
+    el.checkedToday && (el.checkedToday.textContent = '…');
+    el.totalCheckins && (el.totalCheckins.textContent = '…');
+    el.totalRewards && (el.totalRewards.textContent = '…');
+
+    const today = todayStrLocal();
+    let totalRewardsGiven = 0;
+    let totalCheckinsAll = 0;
+    let totalCheckinsToday = 0;
+    const usersCheckedToday = new Set();
+
+    const q = db.collectionGroup('cycles');
+    // paginate to avoid memory spike — this example fetches up to 10k docs in pages of 1000.
+    let page = await q.limit(1000).get();
+    while (page.size > 0) {
+      page.forEach(doc => {
+        const d = doc.data();
+        if (d.status === 'received') totalRewardsGiven += Number(d.rewardAmount || REWARD_LAST);
+        const days = Array.isArray(d.days) ? d.days : [];
+        totalCheckinsAll += days.filter(Boolean).length;
+        const diff = dayDiff(d.cycleStartDate || today, today);
+        if (diff >= 0 && diff < CYCLE_LENGTH && days[diff]) {
+          totalCheckinsToday += 1;
+          // parent parent id is uid: checkins/{uid}/cycles/{cycleDoc}
+          try { usersCheckedToday.add(doc.ref.parent.parent.id); } catch (e) {}
+        }
+      });
+
+      if (!page.docs.length || page.size < 1000) break;
+      const last = page.docs[page.docs.length - 1];
+      page = await q.startAfter(last).limit(1000).get();
+    }
+
+    // total users from users collection
+    const usersSnap = await db.collection('users').get();
+    el.totalUsers.textContent = usersSnap.size;
+    el.checkedToday.textContent = usersCheckedToday.size;
+    el.totalCheckins.textContent = totalCheckinsAll;
+    el.totalRewards.textContent = fmtNaira(totalRewardsGiven);
+  }
+
+  // ----- load table by enumerating users and computing per-user stats -----
+  async function loadAdminTable() {
+    el.tableBody.innerHTML = '<tr><td colspan="8" class="p-6 text-slate-400">Loading users & stats…</td></tr>';
+    const users = await loadAllUsers(1000);
+    if (users.length === 0) {
+      el.tableBody.innerHTML = '<tr><td colspan="8" class="p-6 text-slate-400">No users found.</td></tr>';
+      return;
+    }
+
+    // compute stats in parallel but batch to avoid too many concurrent reads
+    const BATCH = 20;
+    const results = [];
+    for (let i = 0; i < users.length; i += BATCH) {
+      const batch = users.slice(i, i + BATCH);
+      const prom = batch.map(u => computeUserStats(u.uid, u.doc));
+      const res = await Promise.all(prom);
+      results.push(...res);
+    }
+
+    // update summary quick counts (fast approximate)
+    const totalUsers = users.length;
+    const checkedToday = results.filter(r => r.checkedToday).length;
+    const totalCheckins = results.reduce((s, r) => s + r.totalCheckins, 0);
+    const totalRewards = results.reduce((s, r) => s + Number(r.totalRewards || 0), 0);
+
+    el.totalUsers.textContent = totalUsers;
+    el.checkedToday.textContent = checkedToday;
+    el.totalCheckins.textContent = totalCheckins;
+    el.totalRewards.textContent = fmtNaira(totalRewards);
+
+    // store & render
+    renderTable(results);
+  }
+
+  // ----- export CSV (current cache) -----
+  function exportCSV() {
+    const rows = [
+      ['uid','displayName','email','checkedToday','totalCheckins','completedCycles','totalRewards','lastCheckin']
+    ];
+    statsCache.forEach(s => rows.push([s.uid, s.displayName, s.email, s.checkedToday ? 'YES' : 'NO', s.totalCheckins, s.completedCycles, s.totalRewards, s.lastCheckin]));
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `checkin-stats-${todayStrLocal()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ----- simple XSS-safe text helper -----
+  function escapeHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/[&<>"']/g, function (m) {
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];
+    });
+  }
+
+  // ----- wire UI events -----
+  function wireUI() {
+    el.search.addEventListener('input', () => renderTable(statsCache));
+    el.viewSelect.addEventListener('change', () => renderTable(statsCache));
+    el.filterBtn.addEventListener('click', async () => {
+      // basic date range client-side filter (on lastCheckin)
+      const from = el.fromDate.value;
+      const to = el.toDate.value;
+      if (!from && !to) { renderTable(statsCache); return; }
+      const filtered = statsCache.filter(s => {
+        if (!s.lastCheckin || s.lastCheckin === '—') return false;
+        try {
+          const dt = new Date(s.lastCheckin);
+          if (from && dt < new Date(from + 'T00:00:00')) return false;
+          if (to && dt > new Date(to + 'T23:59:59')) return false;
+          return true;
+        } catch (e) { return false; }
+      });
+      renderTable(filtered);
+    });
+
+    el.exportCsvBtn.addEventListener('click', () => exportCSV());
+    el.scanAllBtn.addEventListener('click', async () => {
+      try {
+        el.scanAllBtn.textContent = 'Scanning…';
+        await recalcSummaryScan();
+      } finally { el.scanAllBtn.textContent = 'Recalculate totals (scan all)'; }
+    });
+
+    el.realtimeToggle.addEventListener('change', () => {
+      if (el.realtimeToggle.checked) {
+        // basic real-time: re-run table every 8s (safe alternative to many listeners)
+        window._admin_realtime_interval = setInterval(() => loadAdminTable(), 8000);
+        showToast('Realtime polling enabled (every 8s)');
+      } else {
+        clearInterval(window._admin_realtime_interval);
+        showToast('Realtime polling disabled');
+      }
+    });
+  }
+
+  // ----- toast -----
+  function showToast(msg) {
+    let t = document.getElementById('admin-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'admin-toast';
+      t.className = 'fixed left-1/2 -translate-x-1/2 bottom-6 z-50 px-4 py-2 rounded-full';
+      t.style.background = 'rgba(10,11,13,0.9)';
+      t.style.color = 'white';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 2000);
+  }
+
+  // ----- public start function -----
+  async function startAdminCheckin() {
+    wireUI();
+    await loadAdminTable();
+    // also run a fast summary scan using per-user results (quick)
+    // and a full scan can be done via the Recalculate button (collectionGroup).
+    try { await recalcSummaryScan(); } catch (e) { console.warn('Summary scan failed (will still show per-user):', e); }
+    showToast('Admin check-in dashboard loaded');
+  }
+
+  // expose
+  window.startAdminCheckin = startAdminCheckin;
+
+  // auto-start (safe: will wait for firebase auth availability)
+  try {
+    // If admin UI is visible in your SPA call startAdminCheckin() when switching to admin tab.
+    // We also guard for firebase ready; try auto-init after small delay if firebase exists.
+    const tryAuto = async () => {
+      if (typeof db !== 'undefined' && typeof firebase !== 'undefined') {
+        // don't auto-run if the admin screen is not present
+        if (document.getElementById('admin-checkin-screen')) {
+          await startAdminCheckin();
+        }
+      } else {
+        setTimeout(tryAuto, 600);
+      }
+    };
+    tryAuto();
+  } catch (e) { console.warn('Admin checkin module init error', e); }
+
+})();
+
+
+
+
+
+
+
+
 
 
 // DASHBOARD NOTIFICATION ONLY
@@ -1332,6 +1773,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

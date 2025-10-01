@@ -134,7 +134,7 @@
       
 
       <!-- ================== POST ADMIN JOB FORM ================== -->
-<section id="adminPostJob" class="hidden p-4">
+<section id="adminPostJob" class="tab-section hidden p-4">
   <h2 class="text-xl font-bold mb-4">Post Admin Job</h2>
 
   <div class="space-y-4">
@@ -180,7 +180,7 @@
 
 
 <!-- ===== Social Tasks Admin (Modern, Searchable, Transaction-safe) ===== -->
-<div id="social-tasks-admin" class="p-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+<div id="social-tasks-admin" class="tab-section hidden p-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
   <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
     <h2 class="text-3xl font-extrabold text-gray-800 flex items-center gap-3">📋 Social Tasks Review</h2>
@@ -364,7 +364,7 @@
 <!-- ========================
  📊 Referral Dashboard Section
  ======================== -->
-<section id="team" class="hidden px-5 sm:px-8 pb-16 space-y-8">
+<section id="team" class="tab-section hidden px-5 sm:px-8 pb-16 space-y-8">
 
   <!-- KPI Cards -->
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -563,129 +563,299 @@
 <!-- Admin Check-In Dashboard -->
 
 
-<!-- Admin Check-In Dashboard -->
-<div id="admin-checkin-screen"
-  class="tab-section hidden min-h-screen p-6 bg-gradient-to-br from-[#0a0f24] via-[#0c1b36] to-[#050910] text-white">
 
-  <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 text-transparent bg-clip-text drop-shadow-lg">
-        Check-In Admin Console
-      </h1>
-      <p class="text-sm text-slate-400 mt-1">✨ Live visibility into user check-ins & rewards.</p>
-    </div>
-
-    <div class="flex items-center space-x-3">
-      <button id="admin-export-csv"
-        class="px-4 py-2 rounded-2xl bg-gradient-to-r from-emerald-400 to-green-600 text-black font-semibold shadow-lg hover:scale-105 hover:shadow-green-500/40 transition">
-        Export CSV
-      </button>
-
-      <label class="flex items-center space-x-2 text-sm select-none">
-        <input id="admin-realtime-toggle" type="checkbox" class="w-4 h-4 accent-blue-500" />
-        <span class="text-slate-300">Realtime</span>
-      </label>
-
-      <button id="admin-scan-all"
-        class="px-3 py-2 rounded-2xl bg-gradient-to-r from-pink-500/20 to-purple-600/20 text-sm text-slate-200 hover:from-pink-500/40 hover:to-purple-600/40 hover:shadow-lg hover:shadow-pink-500/30 transition">
-        Recalculate totals
-      </button>
-    </div>
-  </div>
-
-  <!-- Summary cards -->
-  <div id="admin-summary" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    <div
-      class="p-4 rounded-2xl bg-gradient-to-br from-[#1a223a] to-[#0f1729] shadow-lg hover:shadow-cyan-500/40 transition">
-      <div class="text-sm text-slate-400">Total users</div>
-      <div id="sum-total-users" class="text-2xl font-bold mt-1 text-cyan-400">—</div>
-    </div>
-
-    <div
-      class="p-4 rounded-2xl bg-gradient-to-br from-[#1a223a] to-[#0f1729] shadow-lg hover:shadow-emerald-500/40 transition">
-      <div class="text-sm text-slate-400">Users checked today</div>
-      <div id="sum-checked-today" class="text-2xl font-bold mt-1 text-emerald-400">—</div>
-    </div>
-
-    <div
-      class="p-4 rounded-2xl bg-gradient-to-br from-[#1a223a] to-[#0f1729] shadow-lg hover:shadow-purple-500/40 transition">
-      <div class="text-sm text-slate-400">Total checkins (all-time)</div>
-      <div id="sum-total-checkins" class="text-2xl font-bold mt-1 text-purple-400">—</div>
-    </div>
-
-    <div
-      class="p-4 rounded-2xl bg-gradient-to-br from-[#1a223a] to-[#0f1729] shadow-lg hover:shadow-yellow-500/40 transition">
-      <div class="text-sm text-slate-400">Total rewards given (₦)</div>
-      <div id="sum-total-rewards" class="text-2xl font-bold mt-1 text-yellow-400">—</div>
-    </div>
-  </div>
-
-  <!-- Controls -->
-  <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mb-4">
-    <div class="flex items-center gap-2 w-full md:w-1/2">
-      <input id="admin-search" type="search" placeholder="🔍 Search name, email or uid"
-        class="w-full p-3 rounded-xl bg-[#10172a] border border-slate-700 text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-    </div>
-
-    <div class="flex items-center gap-2">
-      <select id="admin-view-select"
-        class="p-2 rounded-xl bg-[#10172a] border border-slate-700 text-white focus:ring-2 focus:ring-purple-500">
-        <option value="all">All users</option>
-        <option value="today">Checked today</option>
-        <option value="completed">Completed cycles</option>
-      </select>
-
-      <input id="admin-from" type="date"
-        class="p-2 rounded-xl bg-[#10172a] border border-slate-700 text-white focus:ring-2 focus:ring-purple-500" />
-      <input id="admin-to" type="date"
-        class="p-2 rounded-xl bg-[#10172a] border border-slate-700 text-white focus:ring-2 focus:ring-purple-500" />
-
-      <button id="admin-filter-btn"
-        class="px-4 py-2 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg hover:shadow-purple-500/40">
-        Filter
-      </button>
-    </div>
-  </div>
-
-  <!-- Users table -->
-  <div class="overflow-auto bg-[#10172a]/70 rounded-xl p-4 shadow-lg border border-slate-700">
-    <table class="min-w-full text-sm">
-      <thead>
-        <tr class="text-slate-300 text-left border-b border-slate-700">
-          <th class="px-3 py-2">UID</th>
-          <th class="px-3 py-2">Name / Email</th>
-          <th class="px-3 py-2">Today</th>
-          <th class="px-3 py-2">Total checkins</th>
-          <th class="px-3 py-2">Completed cycles</th>
-          <th class="px-3 py-2">Rewards (₦)</th>
-          <th class="px-3 py-2">Last check-in</th>
-          <th class="px-3 py-2">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="admin-table-body" class="divide-y divide-slate-700"></tbody>
-    </table>
-  </div>
-</div>
-
-<!-- User details modal -->
-<div id="admin-user-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
-  <div class="absolute inset-0 bg-black/70 backdrop-blur-md"
-    onclick="document.getElementById('admin-user-modal').classList.add('hidden')"></div>
-  <div
-    class="relative max-w-3xl w-full bg-gradient-to-br from-[#0f1729] to-[#1a223a] rounded-2xl p-6 z-10 text-white shadow-xl border border-slate-700">
-    <div class="flex items-center justify-between mb-4">
-      <h3 id="modal-uid" class="font-bold text-cyan-400">User</h3>
-      <button onclick="document.getElementById('admin-user-modal').classList.add('hidden')"
-        class="px-3 py-1 rounded-lg bg-gradient-to-r from-red-500/20 to-red-600/20 hover:from-red-500/40 hover:to-red-600/40">
-        Close
-      </button>
-    </div>
-    <div id="modal-content" class="space-y-3 max-h-[60vh] overflow-auto"></div>
-  </div>
-</div>
+<!-- Admin Check-In Dashboard -->  <div id="admin-checkin-screen"    class="tab-section hidden min-h-screen p-6 bg-gradient-to-br from-[#071024] via-[#071f2e] to-[#071024] text-white">    <!-- Header -->    <div class="flex items-center justify-between mb-6">      <div>          <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">        
+    Check-In Admin Console        
+  </h1>        
+  <p class="text-sm text-slate-300 mt-1">Live visibility into user check-ins & rewards.</p>        
+</div>  <div class="flex items-center space-x-3">  <button id="admin-export-csv"        
+class="px-4 py-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-black font-semibold shadow-md hover:scale-105 transition">  
+Export CSV  
+</button>    <label class="flex items-center space-x-2 text-sm select-none">        
+    <input id="admin-realtime-toggle" type="checkbox" class="w-4 h-4" />        
+    <span class="text-slate-300">Realtime</span>        
+  </label>    <button id="admin-scan-all"        
+title="Scan all cycles (may be heavy if many docs)"        
+class="px-3 py-2 rounded-2xl bg-white/6 text-sm hover:bg-white/10 transition">    
+Recalculate totals (scan all)    
+</button>  </div>    </div>    <!-- Summary cards -->    <div id="admin-summary" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">        
+    <div class="p-4 rounded-2xl bg-white/5 shadow-sm">        
+      <div class="text-sm text-slate-300">Total users</div>        
+      <div id="sum-total-users" class="text-2xl font-bold mt-1">—</div>        
+    </div>        
+    <div class="p-4 rounded-2xl bg-white/5 shadow-sm">        
+      <div class="text-sm text-slate-300">Users checked today</div>        
+      <div id="sum-checked-today" class="text-2xl font-bold mt-1">—</div>        
+    </div>        
+    <div class="p-4 rounded-2xl bg-white/5 shadow-sm">        
+      <div class="text-sm text-slate-300">Total checkins (all-time)</div>        
+      <div id="sum-total-checkins" class="text-2xl font-bold mt-1">—</div>        
+    </div>        
+    <div class="p-4 rounded-2xl bg-white/5 shadow-sm">        
+      <div class="text-sm text-slate-300">Total rewards given (₦)</div>        
+      <div id="sum-total-rewards" class="text-2xl font-bold mt-1">—</div>        
+    </div>        
+  </div>    <!-- Controls -->    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mb-4">        
+    <div class="flex items-center gap-2 w-full md:w-1/2">        
+      <input id="admin-search" type="search" placeholder="Search name, email or uid"        
+             class="w-full p-3 rounded-xl bg-white/5 placeholder:text-slate-400 focus:outline-none" />        
+    </div>  <div class="flex items-center gap-2">        
+  <select id="admin-view-select" class="p-2 rounded-xl bg-white/5">        
+    <option value="all">All users</option>        
+    <option value="today">Checked today</option>        
+    <option value="completed">Completed cycles</option>        
+  </select>      <input id="admin-from" type="date" class="p-2 rounded-xl bg-white/5" />        
+  <input id="admin-to" type="date" class="p-2 rounded-xl bg-white/5" />    <button id="admin-filter-btn" class="px-4 py-2 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-md">Filter</button>  </div>    </div>    <!-- Users table -->    <div class="overflow-auto bg-white/5 rounded-xl p-4">        
+    <table class="min-w-full text-sm">        
+      <thead>        
+        <tr class="text-slate-300 text-left">        
+          <th class="px-3 py-2">UID</th>        
+          <th class="px-3 py-2">Name / Email</th>        
+          <th class="px-3 py-2">Today</th>        
+          <th class="px-3 py-2">Total checkins</th>        
+          <th class="px-3 py-2">Completed cycles</th>        
+          <th class="px-3 py-2">Rewards (₦)</th>        
+          <th class="px-3 py-2">Last check-in</th>        
+          <th class="px-3 py-2">Actions</th>        
+        </tr>        
+      </thead>        
+      <tbody id="admin-table-body" class="divide-y divide-white/6"></tbody>        
+    </table>        
+  </div>        
+</div>  <!-- User details modal -->  <div id="admin-user-modal" class="fixed inset-0 z-50 hidden items-center justify-center">        
+  <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('admin-user-modal').classList.add('hidden')"></div>        
+  <div class="relative max-w-3xl w-full bg-[#071228] rounded-2xl p-6 z-10 text-white shadow-xl">        
+    <div class="flex items-center justify-between mb-4">        
+      <h3 id="modal-uid" class="font-bold">User</h3>        
+      <button onclick="document.getElementById('admin-user-modal').classList.add('hidden')" class="px-3 py-1 rounded-lg bg-white/6">Close</button>        
+    </div>        
+    <div id="modal-content" class="space-y-3 max-h-[60vh] overflow-auto"></div>        
+  </div>        
+</div>  
 
 
+
+
+
+<!-- Paste at end of your CSS or inside a <style> before </body> -->
+<style>
+/* Admin Check-In: colorful, flashy theme overrides
+   No JS changes. Add this after Tailwind CSS so it overrides utility colors.
+*/
+
+:root{
+  --accent-blue: #60a5fa;
+  --accent-purple: #a78bfa;
+  --accent-green: #34d399;
+  --muted: #e6f7ff;
+  --glass: rgba(255,255,255,0.04);
+  --card-border: rgba(167,139,250,0.12);
+}
+
+/* Base screen tweaks */
+#admin-checkin-screen{
+  color: var(--muted);
+  background: linear-gradient(135deg, #051226 0%, #071f2e 45%, #04233a 100%);
+}
+
+/* Replace pale gray texts inside the admin screen */
+#admin-checkin-screen [class*="text-slate-300"],
+#admin-checkin-screen .text-slate-300 {
+  color: #bfe6ff !important;
+}
+
+/* Make descriptions brighter */
+#admin-checkin-screen p, #admin-checkin-screen label, #admin-checkin-screen small {
+  color: #cdefff;
+}
+
+/* Summary cards - glassy with soft gradient accent */
+#admin-summary > div {
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+  border: 1px solid var(--card-border);
+  padding: 1rem;
+  border-radius: 1rem;
+  backdrop-filter: blur(6px);
+  position: relative;
+  overflow: hidden;
+  transition: transform .22s ease, box-shadow .22s ease;
+}
+#admin-summary > div:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 50px rgba(7,18,40,0.6);
+}
+#admin-summary > div::before{
+  content: "";
+  position: absolute;
+  left: -40%;
+  top: -30%;
+  width: 180%;
+  height: 160%;
+  background: linear-gradient(90deg,var(--accent-blue),var(--accent-purple),var(--accent-green));
+  opacity: 0.06;
+  transform: rotate(12deg);
+  pointer-events: none;
+}
+#admin-summary .text-2xl, #admin-summary .font-bold {
+  color: white;
+  text-shadow: 0 6px 16px rgba(106,90,225,0.08);
+}
+
+/* Buttons - punchy and lively */
+#admin-export-csv, #admin-scan-all, #admin-filter-btn {
+  border: none;
+  font-weight: 700;
+  transition: transform .16s ease, box-shadow .16s ease;
+  border-radius: 12px;
+}
+#admin-export-csv {
+  background: linear-gradient(90deg,var(--accent-green), #16a34a);
+  color: #00210a;
+  padding: .6rem 1rem;
+}
+#admin-export-csv:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(16,185,129,0.15); }
+
+#admin-filter-btn {
+  background: linear-gradient(90deg,var(--accent-blue), var(--accent-purple));
+  color: white;
+  padding: .6rem 1rem;
+}
+#admin-filter-btn:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(96,165,250,0.15); }
+
+#admin-scan-all {
+  background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  color: #dbeafe;
+  padding: .45rem .9rem;
+}
+
+/* Inputs & selects - neon outlines on focus */
+#admin-checkin-screen input[type="search"],
+#admin-checkin-screen input[type="date"],
+#admin-checkin-screen select {
+  background: rgba(255,255,255,0.03);
+  color: #e6f7ff;
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: .75rem .9rem;
+  border-radius: 12px;
+}
+#admin-checkin-screen input::placeholder { color: rgba(206,230,255,0.5); }
+#admin-checkin-screen input:focus, #admin-checkin-screen select:focus {
+  outline: none;
+  box-shadow: 0 6px 30px rgba(96,165,250,0.12);
+  border-color: rgba(96,165,250,0.6);
+}
+
+/* Table styling */
+#admin-checkin-screen table {
+  color: #dbeeff;
+  width: 100%;
+  border-collapse: collapse;
+}
+#admin-checkin-screen thead tr th {
+  color: #dbeeff;
+  font-weight: 600;
+  letter-spacing: .01em;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  padding: .8rem .6rem;
+}
+#admin-checkin-screen tbody tr td {
+  padding: .85rem .6rem;
+  vertical-align: middle;
+}
+
+/* Row stripes (subtle) */
+#admin-checkin-screen tbody tr:nth-child(odd) {
+  background: linear-gradient(90deg, rgba(9,17,30,0.02), rgba(9,17,30,0.03));
+}
+#admin-checkin-screen tbody tr:hover {
+  background: linear-gradient(90deg, rgba(96,165,250,0.03), rgba(167,139,250,0.02));
+}
+
+/* UID column - highlight */
+#admin-checkin-screen tbody tr td:first-child {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace;
+  color: #a5f3fc;
+  font-weight: 600;
+}
+
+/* Action buttons in table - add class 'actions-btn' to your action elements (optional) */
+#admin-checkin-screen .actions-btn {
+  background: linear-gradient(90deg,#60a5fa,#a78bfa);
+  color: white;
+  padding: .4rem .6rem;
+  border-radius: .6rem;
+  font-weight: 700;
+  font-size: .85rem;
+  border: none;
+}
+
+/* Modal styling */
+#admin-user-modal .relative {
+  background: linear-gradient(180deg, rgba(7,18,40,0.9), rgba(6,22,40,0.95));
+  border: 1px solid rgba(120,91,255,0.12);
+  box-shadow: 0 30px 90px rgba(6,12,24,0.7);
+}
+#admin-user-modal .absolute {
+  background: rgba(2,6,23,0.75) !important;
+}
+#admin-user-modal button {
+  color: #e6f7ff;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  padding: .4rem .7rem;
+}
+
+/* Make sure small text is readable */
+#admin-checkin-screen .text-sm { color: rgba(207,233,255,0.95); }
+
+/* Override Tailwind-ish bg-white utilities if present */
+[class*="bg-white/5"], [class*="bg-white/6"] {
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)) !important;
+  border: 1px solid rgba(255,255,255,0.03) !important;
+  box-shadow: 0 8px 30px rgba(2,6,23,0.4) !important;
+}
+
+/* Flashy underline for the H1 */
+#admin-checkin-screen h1 {
+  position: relative;
+  display: inline-block;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+#admin-checkin-screen h1::after {
+  content: "";
+  height: 4px;
+  width: 100%;
+  display: block;
+  margin-top: .6rem;
+  background: linear-gradient(90deg,var(--accent-blue),var(--accent-purple),var(--accent-green));
+  border-radius: 8px;
+  opacity: 0.95;
+  transform-origin: left;
+  transition: transform .4s ease;
+}
+#admin-checkin-screen h1:hover::after {
+  transform: scaleX(1.02);
+}
+
+/* Animated sweep on export button for life */
+@keyframes sweep {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+#admin-export-csv { background-size: 200% 200%; animation: sweep 6s linear infinite; }
+
+/* Slight responsive adjustments */
+@media (max-width: 768px) {
+  #admin-summary { grid-template-columns: repeat(2,1fr); }
+  #admin-checkin-screen .flex.items-center.space-x-3 { gap: .5rem; }
+}
+</style>
+
+
+
+
+      
 
 
       
@@ -700,6 +870,7 @@
 </body>
 
 </html>
+
 
 
 

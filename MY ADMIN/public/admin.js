@@ -50,11 +50,7 @@ async function fetchStats() {
 
 
 
-
-
-// --- Load All Users with Filters + Stats ---
-
-/* Users Admin Module
+/* Users Admin Module (joinedAt version)
    - Paste after firebase init (db should be firebase.firestore())
    - Auto-inits when `db` exists and DOM is ready
    - Exposes window.startUsersModule() and window.stopUsersModule()
@@ -71,20 +67,15 @@ async function fetchStats() {
 
   function toDateVal(v) {
     if (!v) return null;
-    // Firestore client timestamp
     if (typeof v.toDate === 'function') return v.toDate();
-    // possible Admin SDK shape
     if (v._seconds || v.seconds) {
       const secs = v._seconds || v.seconds;
       return new Date(secs * 1000);
     }
-    // number (ms or seconds)
     if (typeof v === 'number') {
-      // heuristics: if > 1e12 it's ms; if < 1e12 it's secs
       if (v > 1e12) return new Date(v);
       return new Date(v * 1000);
     }
-    // string
     if (typeof v === 'string') {
       const p = Date.parse(v);
       return isNaN(p) ? null : new Date(p);
@@ -98,7 +89,6 @@ async function fetchStats() {
   }
 
   function emitConsole(...args) {
-    // small wrapper if you want to toggle logs
     console.debug('[UsersAdmin]', ...args);
   }
 
@@ -114,7 +104,7 @@ async function fetchStats() {
     }
 
     users.forEach(u => {
-      const joinedDate = toDateVal(u.createdAt);
+      const joinedDate = toDateVal(u.joinedAt);
       const html = document.createElement('div');
       html.className = "bg-white p-4 rounded-lg shadow-md border hover:shadow-lg transition";
       html.innerHTML = `
@@ -148,7 +138,7 @@ async function fetchStats() {
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     return users.filter(u => {
-      const d = toDateVal(u.createdAt);
+      const d = toDateVal(u.joinedAt);
       if (!d) return false;
       if (filterKey === 'today') return d >= startToday;
       if (filterKey === 'yesterday') return (d >= startYesterday && d < startToday);
@@ -183,7 +173,6 @@ async function fetchStats() {
     result = applySearch(result, q);
     renderUsers(result);
 
-    // update visible count (if you want)
     const statsContainer = safeEl('total-users');
     if (statsContainer) statsContainer.innerText = allUsersCache.length;
   }
@@ -205,12 +194,12 @@ async function fetchStats() {
     const start7 = new Date(now.getTime() - 7 * 86400000);
 
     const joinedToday = users.filter(u => {
-      const d = toDateVal(u.createdAt);
+      const d = toDateVal(u.joinedAt);
       return d && d >= startToday;
     }).length;
 
     const joinedWeek = users.filter(u => {
-      const d = toDateVal(u.createdAt);
+      const d = toDateVal(u.joinedAt);
       return d && d >= start7;
     }).length;
 
@@ -227,14 +216,13 @@ async function fetchStats() {
       return fallbackLoad();
     }
     try {
-      const q = db.collection('users').orderBy('createdAt','desc');
+      const q = db.collection('users').orderBy('joinedAt','desc');
       unsubscribe = q.onSnapshot(handleSnapshot, (err) => {
         console.warn('Realtime users snapshot error, falling back to once-off load:', err);
         fallbackLoad();
       });
       emitConsole('attached realtime users listener');
     } catch (err) {
-      // some projects may not have createdAt in all docs or security prevents orderBy; fallback
       console.warn('attachRealtime error, fallback to get():', err);
       return fallbackLoad();
     }
@@ -251,7 +239,6 @@ async function fetchStats() {
   }
 
   function handleSnapshot(snap) {
-    // snap.docs is available for both onSnapshot and get()
     const docs = snap.docs || [];
     allUsersCache = docs.map(d => {
       const data = d.data ? d.data() : d;
@@ -259,7 +246,6 @@ async function fetchStats() {
       out.id = d.id || data.id || out.uid || out.userId || null;
       return out;
     });
-    // if some docs lack .id above we set it to doc.id (done)
     updateUserStats(allUsersCache);
     renderUsersFromCache();
   }
@@ -298,17 +284,17 @@ async function fetchStats() {
     }
   }
 
-  // ----- CSV export (optional) -----
+  // ----- CSV export -----
   function exportUsersCSV(users) {
     if (!users || users.length === 0) return alert('No users to export');
-    const header = ['uid','fullName','username','email','is_Premium','createdAt'];
+    const header = ['uid','fullName','username','email','is_Premium','joinedAt'];
     const rows = users.map(u => [
       u.id || '',
       (u.fullName || u.displayName || '').replace(/"/g,'""'),
       (u.username || '').replace(/"/g,'""'),
       (u.email || '').replace(/"/g,'""'),
       !!u.is_Premium,
-      (toDateVal(u.createdAt) ? toDateVal(u.createdAt).toISOString() : '')
+      (toDateVal(u.joinedAt) ? toDateVal(u.joinedAt).toISOString() : '')
     ]);
     const csv = [header, ...rows].map(r => r.map(c => `"${String(c)}"`).join(',')).join('\n');
     const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
@@ -334,7 +320,6 @@ async function fetchStats() {
   async function startUsersModule() {
     wireUI();
     if (typeof db === 'undefined') {
-      // wait for db to exist (poll)
       let tries = 0;
       const waitForDB = () => {
         return new Promise((resolve) => {
@@ -354,7 +339,6 @@ async function fetchStats() {
         return;
       }
     }
-    // attach realtime listener (safe fallback inside)
     attachRealtime();
   }
 
@@ -362,9 +346,8 @@ async function fetchStats() {
     stopRealtime();
   }
 
-  // auto-init when DOM ready and db is present
   function tryAutoInit() {
-    if (!document.getElementById('users')) return; // no users tab on this page
+    if (!document.getElementById('users')) return;
     startUsersModule().catch(e => console.warn('startUsersModule failed', e));
   }
 
@@ -374,11 +357,12 @@ async function fetchStats() {
     window.addEventListener('DOMContentLoaded', tryAutoInit);
   }
 
-  // expose
   window.startUsersModule = startUsersModule;
   window.stopUsersModule = stopUsersModule;
 
 })();
+
+
 
 
 
@@ -2099,6 +2083,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

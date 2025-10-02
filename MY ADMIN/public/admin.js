@@ -2084,7 +2084,7 @@ async function sendEmailNotification() {
 // --- Load Everything on Page Load ---
 window.addEventListener('DOMContentLoaded', () => {
   fetchStats();
-  loadUsers();
+  startUsersModule();
   fetchPendingJobsForAdmin();
   loadWithdrawals();
   loadTaskSubmissions();
@@ -2099,6 +2099,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

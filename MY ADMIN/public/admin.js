@@ -41,26 +41,122 @@ async function fetchStats() {
   document.getElementById('withdrawal-count').innerText = withdrawalSnap.size;
 }
 
-// --- Load All Users ---
+
+
+
+
+
+
+
+
+
+
+
+// --- Load All Users with Filters + Stats ---
+let allUsersCache = []; // cache all users for search/filter
 async function loadUsers() {
-  const snap = await db.collection('users').get();
+  const snap = await db.collection('users').orderBy('createdAt', 'desc').get();
+  allUsersCache = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderUsers(allUsersCache);
+  updateUserStats(allUsersCache);
+}
+
+// --- Render Users ---
+function renderUsers(users) {
   const list = document.getElementById('user-list');
   list.innerHTML = '';
 
-  snap.forEach(doc => {
-    const data = doc.data();
+  users.forEach(data => {
     const div = document.createElement('div');
-    div.className = "bg-white p-4 rounded-lg shadow-sm border";
+    div.className = "bg-white p-4 rounded-lg shadow-md border hover:shadow-lg transition";
     div.innerHTML = `
-      <div class="font-semibold text-blue-600"> Name:${data.fullName || "Unnamed User"}</div>
-	  <div class="font-semibold text-green-600"> Username:${data.username || "Unnamed User"}</div>
-	  
+      <div class="font-semibold text-blue-600">Name: ${data.fullName || "Unnamed"}</div>
+      <div class="font-semibold text-green-600">Username: ${data.username || "N/A"}</div>
       <div>Email: ${data.email || "N/A"}</div>
-      <div>UID: ${doc.id}</div>
+      <div>UID: <span class="text-gray-500">${data.id}</span></div>
+      <div class="text-xs text-gray-400">Joined: ${data.createdAt?.toDate?.().toLocaleDateString() || "N/A"}</div>
+      <div class="mt-2 text-sm ${data.is_Premium ? "text-purple-600 font-bold" : "text-gray-500"}">
+        ${data.is_Premium ? "Premium User" : "Free User"}
+      </div>
     `;
     list.appendChild(div);
   });
+
+  if (users.length === 0) {
+    list.innerHTML = `<p class="text-center text-gray-500">No users found</p>`;
+  }
 }
+
+// --- Update Stats ---
+function updateUserStats(users) {
+  const total = users.length;
+  const premium = users.filter(u => u.is_Premium).length;
+
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startYesterday = new Date(startToday.getTime() - 86400000);
+  const startWeek = new Date(now.getTime() - 7 * 86400000);
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const joinedToday = users.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startToday).length;
+  const joinedWeek = users.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startWeek).length;
+
+  document.getElementById("total-users").innerText = total;
+  document.getElementById("premium-users").innerText = premium;
+  document.getElementById("joined-today").innerText = joinedToday;
+  document.getElementById("joined-week").innerText = joinedWeek;
+}
+
+// --- Search Function ---
+document.getElementById("user-search").addEventListener("input", (e) => {
+  const q = e.target.value.toLowerCase();
+  const filtered = allUsersCache.filter(u =>
+    (u.username || "").toLowerCase().includes(q) ||
+    (u.email || "").toLowerCase().includes(q) ||
+    (u.fullName || "").toLowerCase().includes(q) ||
+    (u.id || "").toLowerCase().includes(q)
+  );
+  renderUsers(filtered);
+});
+
+// --- Time Filter ---
+document.getElementById("time-filter").addEventListener("change", (e) => {
+  const filter = e.target.value;
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startYesterday = new Date(startToday.getTime() - 86400000);
+  const startWeek = new Date(now.getTime() - 7 * 86400000);
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let filtered = allUsersCache;
+
+  if (filter === "today") {
+    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startToday);
+  } else if (filter === "yesterday") {
+    filtered = filtered.filter(u => {
+      const d = u.createdAt?.toDate?.();
+      return d && d >= startYesterday && d < startToday;
+    });
+  } else if (filter === "7days") {
+    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startWeek);
+  } else if (filter === "30days") {
+    const start30 = new Date(now.getTime() - 30 * 86400000);
+    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= start30);
+  } else if (filter === "month") {
+    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startMonth);
+  }
+
+  renderUsers(filtered);
+});
+
+
+
+
+
+
+
+
+
 
 // Load All Submitted Jobs
 async function fetchPendingJobsForAdmin() {
@@ -1773,6 +1869,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -581,9 +581,163 @@
 
 
 
+<style>
+/* Admin Referrals Dashboard flashy theme */
+
+#admin-referrals {
+  background: linear-gradient(135deg, #050d1b 0%, #071f2e 50%, #050d1b 100%);
+  color: #dbeeff;
+}
+
+/* Headings */
+#admin-referrals h1 {
+  -webkit-background-clip: text;
+  background-clip: text;
+  font-weight: 800;
+  color: transparent;
+}
+#admin-referrals h1::after {
+  content: "";
+  display: block;
+  height: 3px;
+  margin-top: .5rem;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #60a5fa, #a78bfa, #ec4899);
+  opacity: .9;
+}
+#admin-referrals p,
+#admin-referrals .text-slate-300 {
+  color: #cdefff !important;
+}
+
+/* Buttons */
+#ref-export-agg {
+  background: linear-gradient(90deg, #6366f1, #ec4899);
+  font-weight: 700;
+  transition: transform .2s, box-shadow .2s;
+}
+#ref-export-agg:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(236,72,153,.25);
+}
+#ref-scan-all {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,.08);
+  color: #e5e7eb;
+}
+#ref-scan-all:hover { background: rgba(255,255,255,0.1); }
+#ref-refresh {
+  background: linear-gradient(90deg, #3b82f6, #9333ea);
+  color: #fff;
+  font-weight: 600;
+  transition: transform .2s, box-shadow .2s;
+}
+#ref-refresh:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(147,51,234,.3);
+}
+
+/* Label Realtime */
+#admin-referrals label {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  color: #dbeeff;
+}
+
+/* Summary cards */
+#admin-referrals .grid > div {
+  border-radius: 1rem;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+  transition: transform .2s, box-shadow .2s;
+}
+#admin-referrals .grid > div:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+}
+#admin-referrals .grid > div .text-2xl {
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 4px 20px rgba(0,0,0,.35);
+}
+
+/* Controls */
+#ref-search {
+  color: #e6f7ff;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+#ref-search::placeholder { color: rgba(206,230,255,0.55); }
+#ref-search:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96,165,250,.3);
+}
+#ref-time-filter {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,.08);
+  color: #e6f7ff;
+}
+#ref-time-filter:focus {
+  border-color: #9333ea;
+  box-shadow: 0 0 0 2px rgba(147,51,234,.3);
+}
+
+/* Top referrers */
+#admin-referrals h3 {
+  color: #fff;
+  font-weight: 700;
+  background: linear-gradient(90deg,#60a5fa,#a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Tables */
+#admin-referrals table {
+  color: #dbeeff;
+  width: 100%;
+  border-collapse: collapse;
+}
+#admin-referrals thead tr th {
+  color: #cdefff;
+  font-weight: 600;
+  padding: .75rem .6rem;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+#admin-referrals tbody tr td {
+  padding: .8rem .6rem;
+}
+#admin-referrals tbody tr:nth-child(odd) {
+  background: rgba(255,255,255,0.02);
+}
+#admin-referrals tbody tr:hover {
+  background: linear-gradient(90deg,rgba(96,165,250,.08),rgba(147,51,234,.08));
+}
+
+/* Modal */
+#ref-modal .relative {
+  background: linear-gradient(180deg, rgba(7,18,40,.95), rgba(6,22,40,.97));
+  border: 1px solid rgba(167,139,250,.2);
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+#ref-modal button {
+  background: rgba(255,255,255,.08);
+  color: #e6f7ff;
+  border-radius: 8px;
+  padding: .4rem .7rem;
+}
+</style>
 
 
 
+
+
+
+
+
+
+
+      
 
                       <!-- ADMIN NOTIFICATION-->
       
@@ -929,6 +1083,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

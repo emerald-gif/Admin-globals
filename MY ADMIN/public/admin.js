@@ -1739,6 +1739,514 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
+
+
+                                          // ADMIN PREMIUM OVERVIEW FUNCTION 
+
+/*
+  Premium Admin Module (single-block)
+  - Paste after firebase init (db should be firebase.firestore())
+  - Exposes startAdminPremium() and stopAdminPremium()
+  - All functions inside this IIFE (no scattering)
+*/
+(function PremiumAdminModule(){
+  // ======= CONFIG =======
+  const QUICK_SCAN_LIMIT = 1000;
+  const PREMIUM_PRICE = 1000; // official price (₦), used for revenue calculations
+  const EVENTS_COLLECTION = 'premiumEvents'; // audit trail
+  const USERS_COLLECTION = 'users';
+  let allUsersCache = [];
+  let lastAggArray = [];
+  let pollingInterval = null;
+  let realtime = false;
+
+  // ======= HELPERS =======
+  function safeEl(id){ return document.getElementById(id); }
+  function money(n){ return '₦' + Number(n || 0).toLocaleString(); }
+  function nowDate(){ return new Date(); }
+
+  function toDateVal(v){
+    if (!v) return null;
+    if (typeof v.toDate === 'function') return v.toDate();
+    if (v._seconds || v.seconds) { const s = v._seconds || v.seconds; return new Date(s * 1000); }
+    if (typeof v === 'number') return v > 1e12 ? new Date(v) : new Date(v * 1000);
+    if (typeof v === 'string') { const p = Date.parse(v); return isNaN(p) ? null : new Date(p); }
+    return null;
+  }
+
+  function escapeHtml(s){ if (s === null || s === undefined) return ''; return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]); }
+
+  // ======= RENDER: summary =======
+  function renderSummary(stats){
+    safeEl('pm-total-users').innerText = stats.totalUsers;
+    safeEl('pm-total-premium').innerText = stats.totalPremium;
+    safeEl('pm-upgrades-today').innerText = stats.upgradesToday;
+    safeEl('pm-revenue').innerText = money(stats.revenue);
+  }
+
+  // ======= AGGREGATE =======
+  function aggregateUsers(users){
+    const totalUsers = users.length;
+    let totalPremium = 0;
+    let upgradesToday = 0;
+    let revenue = 0;
+
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+
+    users.forEach(u => {
+      if (u.is_Premium) totalPremium++;
+      const pu = toDateVal(u.premiumUpgradedAt) || toDateVal(u.joinedAt); // if no upgradedAt, maybe joinedAt used
+      if (pu && pu >= todayStart && u.is_Premium) upgradesToday++;
+    });
+
+    // revenue: read premiumEvents if available in cache, otherwise estimate = totalPremium * PREMIUM_PRICE (less accurate)
+    // We'll query events for accurate revenue when needed; for quick summary, try to compute from events cache if present.
+    // For now use estimate: events revenue not stored locally =>  estimate = number of events of type 'purchase' * PREMIUM_PRICE
+    // We'll set revenue = totalPremium * PREMIUM_PRICE as baseline (safe).
+    revenue = totalPremium * PREMIUM_PRICE;
+
+    return { totalUsers, totalPremium, upgradesToday, revenue };
+  }
+
+  // ======= RENDER: table =======
+  function renderTable(users){
+    const tbody = safeEl('pm-table-body');
+    tbody.innerHTML = '';
+    if (!users || users.length === 0){
+      tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-400">No users found</td></tr>';
+      return;
+    }
+
+    users.forEach(u => {
+      const joined = toDateVal(u.joinedAt);
+      const upgraded = toDateVal(u.premiumUpgradedAt);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="px-3 py-2 font-mono text-xs">${escapeHtml(u.id)}</td>
+        <td class="px-3 py-2">
+          <div class="font-medium">${escapeHtml(u.fullName || u.displayName || '')}</div>
+          <div class="text-xs text-slate-300">${escapeHtml(u.email || '')}</div>
+        </td>
+        <td class="px-3 py-2">
+          ${ u.is_Premium ? '<span class="px-2 py-1 rounded-full bg-emerald-600 text-black text-xs font-semibold">Premium</span>' : '<span class="px-2 py-1 rounded-full bg-white/6 text-xs">Free</span>' }
+        </td>
+        <td class="px-3 py-2 text-xs">${joined ? joined.toLocaleString() : '—'}</td>
+        <td class="px-3 py-2 font-semibold">${money(u.balance || 0)}</td>
+        <td class="px-3 py-2 text-xs">${upgraded ? upgraded.toLocaleString() : '—'}</td>
+        <td class="px-3 py-2">
+          <div class="flex items-center gap-2">
+            <button class="pm-btn-details px-2 py-1 rounded-lg bg-white/6 text-sm" data-uid="${escapeHtml(u.id)}">History</button>
+            <button class="pm-btn-toggle px-2 py-1 rounded-lg bg-amber-500 text-black text-sm" data-uid="${escapeHtml(u.id)}" data-prem="${u.is_Premium ? '1' : '0'}">${u.is_Premium ? 'Revoke' : 'Grant'}</button>
+            <button class="pm-btn-adjust px-2 py-1 rounded-lg bg-white/6 text-sm" data-uid="${escapeHtml(u.id)}">Adjust</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // wire buttons
+    tbody.querySelectorAll('.pm-btn-details').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const uid = btn.dataset.uid;
+        openPremiumModal(uid);
+      });
+    });
+    tbody.querySelectorAll('.pm-btn-toggle').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const uid = btn.dataset.uid;
+        const isNow = btn.dataset.prem === '1';
+        try {
+          btn.disabled = true;
+          btn.innerText = 'Processing…';
+          await adminTogglePremium(uid, !isNow); // flip
+          await refreshData({ fullScan: false });
+        } catch (err) {
+          console.error(err);
+          alert('Action failed — see console');
+        } finally {
+          btn.disabled = false;
+          btn.innerText = isNow ? 'Revoke' : 'Grant';
+        }
+      });
+    });
+    tbody.querySelectorAll('.pm-btn-adjust').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const uid = btn.dataset.uid;
+        const input = prompt('Enter amount to ADD (positive) or SUBTRACT (negative) from user balance (₦). Use numbers only. Example: 500 or -200');
+        if (input === null) return;
+        const amt = Number(input);
+        if (isNaN(amt)) { alert('Invalid amount'); return; }
+        try {
+          await adminAdjustBalance(uid, amt);
+          await refreshData({ fullScan: false });
+        } catch (e) {
+          console.error(e);
+          alert('Adjust failed');
+        }
+      });
+    });
+  }
+
+  // ======= MODAL: premium events for user =======
+  async function openPremiumModal(uid){
+    safeEl('pm-modal').classList.remove('hidden');
+    safeEl('pm-modal-title').innerText = `Premium Events — ${uid}`;
+    const content = safeEl('pm-modal-content');
+    content.innerHTML = `<div class="text-sm text-slate-400">Loading…</div>`;
+    try {
+      const snap = await db.collection(EVENTS_COLLECTION).where('userUid','==', uid).orderBy('createdAt','desc').get();
+      if (snap.empty) {
+        content.innerHTML = `<div class="text-sm text-gray-400">No premium events for this user.</div>`;
+        return;
+      }
+      content.innerHTML = '';
+      snap.docs.forEach(d => {
+        const dd = d.data();
+        const created = toDateVal(dd.createdAt);
+        const row = document.createElement('div');
+        row.className = 'p-3 rounded-xl bg-white/5 flex items-center justify-between';
+        row.innerHTML = `
+          <div>
+            <div class="font-semibold">${escapeHtml(dd.type || 'event')}</div>
+            <div class="text-xs text-slate-300">${escapeHtml(dd.note || '')}</div>
+            <div class="text-xs text-gray-400 mt-1">By: ${escapeHtml(dd.adminUid || dd.triggeredBy || 'system')} · ${created ? created.toLocaleString() : ''}</div>
+          </div>
+          <div class="text-right">
+            <div class="font-bold">${money(dd.amount || 0)}</div>
+            <div class="text-xs text-slate-300">${escapeHtml(dd.status || '')}</div>
+          </div>
+        `;
+        content.appendChild(row);
+      });
+
+      // add export button inside modal
+      const exportBtn = document.createElement('button');
+      exportBtn.className = 'mt-3 px-3 py-1 rounded-xl bg-gradient-to-r from-indigo-500 to-pink-500 text-white';
+      exportBtn.innerText = 'Export Events CSV';
+      exportBtn.addEventListener('click', async () => {
+        await exportPremiumEventsCSV(uid);
+      });
+      content.appendChild(exportBtn);
+    } catch (e) {
+      console.error(e);
+      content.innerHTML = `<div class="text-sm text-red-400">Failed to load events</div>`;
+    }
+  }
+
+  // modal close
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'pm-modal-close') {
+      safeEl('pm-modal').classList.add('hidden');
+    }
+  });
+
+  // ======= ADMIN ACTIONS (transactional) =======
+  // Admin toggles premium status (grant or revoke). When granting, admin may decide to deduct cost or not.
+  async function adminTogglePremium(userUid, makePremium, { deduct = PREMIUM_PRICE, note = 'Admin action' } = {}){
+    // adminUID for event
+    const adminUser = firebase.auth().currentUser;
+    const adminUid = adminUser ? adminUser.uid : null;
+    const userRef = db.collection(USERS_COLLECTION).doc(userUid);
+    const eventsRef = db.collection(EVENTS_COLLECTION).doc(); // auto id
+
+    return db.runTransaction(async tx => {
+      const snap = await tx.get(userRef);
+      if (!snap.exists) throw new Error('User not found');
+      const user = snap.data();
+
+      if (makePremium) {
+        // already premium => no-op
+        if (user.is_Premium) return;
+        // compute balance after deduction (if deduct truthy)
+        let curBal = user.balance || 0;
+        curBal = (typeof curBal === 'number' && isFinite(curBal)) ? curBal : Number(curBal) || 0;
+
+        // If admin wants to force grant without deduct, pass deduct = 0
+        const newBal = curBal - (deduct || 0);
+
+        tx.update(userRef, {
+          is_Premium: true,
+          premiumUpgradedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          balance: newBal
+        });
+
+        tx.set(eventsRef, {
+          userUid,
+          type: (deduct ? 'purchase' : 'admin_grant'),
+          amount: deduct || 0,
+          adminUid,
+          note,
+          status: 'awarded',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        // revoke premium
+        if (!user.is_Premium) return;
+        tx.update(userRef, {
+          is_Premium: false,
+          // keep premiumUpgradedAt for history; optionally set revokedAt
+          revokedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        tx.set(eventsRef, {
+          userUid,
+          type: 'revoked',
+          amount: 0,
+          adminUid,
+          note,
+          status: 'revoked',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    });
+  }
+
+  // Admin adjust balance (positive/negative)
+  async function adminAdjustBalance(userUid, amount, note = 'Admin balance adjustment'){
+    const adminUser = firebase.auth().currentUser;
+    const adminUid = adminUser ? adminUser.uid : null;
+    const userRef = db.collection(USERS_COLLECTION).doc(userUid);
+    const eventsRef = db.collection(EVENTS_COLLECTION).doc();
+    return db.runTransaction(async tx => {
+      const s = await tx.get(userRef);
+      if (!s.exists) throw new Error('User not found');
+      const data = s.data();
+      let cur = data.balance || 0;
+      cur = (typeof cur === 'number' && isFinite(cur)) ? cur : Number(cur) || 0;
+      const newBal = cur + Number(amount || 0);
+      tx.update(userRef, { balance: newBal });
+      tx.set(eventsRef, {
+        userUid,
+        type: 'adjust_balance',
+        amount: amount,
+        adminUid,
+        note,
+        status: 'ok',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  }
+
+  // ======= EXPORT: Premium events CSV for a user =======
+  async function exportPremiumEventsCSV(userUid){
+    const snap = await db.collection(EVENTS_COLLECTION).where('userUid','==', userUid).orderBy('createdAt','desc').get();
+    if (snap.empty) return alert('No events to export');
+    const rows = [['id','type','amount','adminUid','note','status','createdAt']];
+    snap.docs.forEach(d => {
+      const o = d.data();
+      rows.push([d.id, o.type || '', o.amount || 0, o.adminUid || '', (o.note || '').replace(/"/g,'""'), o.status || '', (toDateVal(o.createdAt) || '').toString()]);
+    });
+    const csv = rows.map(r => r.map(c => `"${String(c)}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `premium-events-${userUid}-${(new Date()).toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  // ======= DATA LOADING: quick & full =======
+  async function quickScan(limit = QUICK_SCAN_LIMIT){
+    const snap = await db.collection(USERS_COLLECTION).orderBy('joinedAt','desc').limit(limit).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  async function fullScan(){
+    const results = [];
+    let q = db.collection(USERS_COLLECTION).orderBy('joinedAt','desc').limit(1000);
+    let snap = await q.get();
+    while (!snap.empty) {
+      snap.docs.forEach(d => results.push({ id: d.id, ...d.data() }));
+      if (snap.size < 1000) break;
+      const last = snap.docs[snap.docs.length - 1];
+      snap = await db.collection(USERS_COLLECTION).orderBy('joinedAt','desc').startAfter(last).limit(1000).get();
+    }
+    return results;
+  }
+
+  // ======= REFRESH (main) =======
+  async function refreshData({ fullScan: doFull = false } = {}){
+    try {
+      safeEl('pm-refresh').disabled = true;
+      safeEl('pm-refresh').innerText = 'Loading…';
+      allUsersCache = doFull ? await fullScan() : await quickScan();
+      const stats = aggregateUsers(allUsersCache);
+      renderSummary(stats);
+      // client-side filters & search will be applied based on UI state; store lastAggArray as initial sorted by joined
+      lastAggArray = allUsersCache.slice().sort((a,b) => {
+        const da = toDateVal(a.joinedAt) || 0;
+        const dbv = toDateVal(b.joinedAt) || 0;
+        return dbv - da;
+      });
+      // apply filter + search and render
+      applyClientFilter();
+    } catch (e) {
+      console.error('refreshData error', e);
+      alert('Failed to load users. See console.');
+    } finally {
+      safeEl('pm-refresh').disabled = false;
+      safeEl('pm-refresh').innerText = 'Refresh';
+    }
+  }
+
+  // ======= Client filter (search + time) =======
+  function applyClientFilter(){
+    const q = (safeEl('pm-search')?.value || '').trim().toLowerCase();
+    const timeKey = safeEl('pm-time-filter')?.value || 'all';
+    let arr = lastAggArray.slice();
+
+    // time filter: build set of uids that match timeframe
+    if (timeKey && timeKey !== 'all') {
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startY = new Date(startToday.getTime() - 86400000);
+      const start7 = new Date(now.getTime() - 7 * 86400000);
+      const start30 = new Date(now.getTime() - 30 * 86400000);
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      // compute uids with referred or joinedAt in timeframe (we're filtering users directly)
+      arr = arr.filter(u => {
+        const d = toDateVal(u.joinedAt);
+        if (!d) return false;
+        if (timeKey === 'today') return d >= startToday;
+        if (timeKey === 'yesterday') return d >= startY && d < startToday;
+        if (timeKey === '7days') return d >= start7;
+        if (timeKey === '30days') return d >= start30;
+        if (timeKey === 'month') return d >= startMonth;
+        return true;
+      });
+    }
+
+    // search filter
+    if (q) {
+      arr = arr.filter(u => {
+        return (u.id && u.id.toLowerCase().includes(q)) ||
+               (u.username && u.username.toLowerCase().includes(q)) ||
+               (u.email && u.email.toLowerCase().includes(q)) ||
+               ((u.fullName || u.displayName || '').toLowerCase().includes(q));
+      });
+    }
+
+    // Render filtered results
+    renderTable(arr);
+  }
+
+  // ======= EXPORT USERS CSV (current cache) =======
+  function exportUsersCSV(){
+    if (!allUsersCache || allUsersCache.length === 0) return alert('No users to export');
+    const header = ['uid','fullName','username','email','is_Premium','balance','joinedAt','premiumUpgradedAt'];
+    const rows = allUsersCache.map(u => [
+      u.id || '',
+      (u.fullName || u.displayName || '').replace(/"/g,'""'),
+      (u.username || '').replace(/"/g,'""'),
+      (u.email || '').replace(/"/g,'""'),
+      !!u.is_Premium,
+      u.balance || 0,
+      (toDateVal(u.joinedAt) ? toDateVal(u.joinedAt).toISOString() : ''),
+      (toDateVal(u.premiumUpgradedAt) ? toDateVal(u.premiumUpgradedAt).toISOString() : '')
+    ]);
+    const csv = [header, ...rows].map(r => r.map(c => `"${String(c)}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `users-${(new Date()).toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  // ======= EXPORT ALL EVENTS CSV =======
+  async function exportAllEventsCSV(){
+    // careful: may be expensive for many events. We'll only export last 5000 events as safe default.
+    const snap = await db.collection(EVENTS_COLLECTION).orderBy('createdAt','desc').limit(5000).get();
+    if (snap.empty) return alert('No events to export');
+    const rows = [['id','userUid','type','amount','adminUid','note','status','createdAt']];
+    snap.docs.forEach(d => {
+      const o = d.data();
+      rows.push([d.id, o.userUid || '', o.type || '', o.amount || 0, o.adminUid || '', (o.note||'').replace(/"/g,'""'), o.status || '', (toDateVal(o.createdAt) || '').toString()]);
+    });
+    const csv = rows.map(r => r.map(c => `"${String(c)}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `premium-events-${(new Date()).toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  // ======= POLLING =======
+  function startPolling(){ stopPolling(); pollingInterval = setInterval(() => refreshData({ fullScan: false }), 8000); }
+  function stopPolling(){ if (pollingInterval) clearInterval(pollingInterval); pollingInterval = null; }
+
+  // ======= UI wiring =======
+  function wireUI(){
+    safeEl('pm-refresh').addEventListener('click', () => refreshData({ fullScan: false }));
+    safeEl('premium-scan-all').addEventListener('click', async () => {
+      if (!confirm('This will scan ALL users (can be expensive). Continue?')) return;
+      await refreshData({ fullScan: true });
+    });
+    safeEl('premium-export-users').addEventListener('click', exportUsersCSV);
+    safeEl('premium-export-events').addEventListener('click', exportAllEventsCSV);
+    safeEl('premium-realtime-toggle').addEventListener('change', (e) => {
+      realtime = !!e.target.checked;
+      if (realtime) startPolling(); else stopPolling();
+    });
+    // search + time filter
+    const searchEl = safeEl('pm-search');
+    let sT = null;
+    if (searchEl) {
+      searchEl.addEventListener('input', () => {
+        clearTimeout(sT);
+        sT = setTimeout(() => applyClientFilter(), 250);
+      });
+    }
+    const timeEl = safeEl('pm-time-filter');
+    if (timeEl) timeEl.addEventListener('change', () => applyClientFilter());
+  }
+
+  // ======= PUBLIC START / STOP =======
+  async function startAdminPremium(){
+    wireUI();
+    // wait for db if missing
+    if (typeof db === 'undefined') {
+      let tries = 0;
+      const ok = await new Promise((resolve) => {
+        const t = setInterval(() => {
+          if (typeof db !== 'undefined') { clearInterval(t); resolve(true); }
+          tries++; if (tries > 40) { clearInterval(t); resolve(false); }
+        }, 150);
+      });
+      if (!ok) { console.error('db not found'); return; }
+    }
+    await refreshData({ fullScan: false });
+  }
+
+  function stopAdminPremium(){
+    stopPolling();
+  }
+
+  // auto-init if present
+  function tryAutoInit(){
+    if (!document.getElementById('admin-premium')) return;
+    if (typeof db === 'undefined') {
+      const t = setInterval(() => {
+        if (typeof db !== 'undefined') { clearInterval(t); startAdminPremium().catch(e => console.error(e)); }
+      }, 250);
+    } else {
+      startAdminPremium().catch(e => console.error(e));
+    }
+  }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') tryAutoInit();
+  else window.addEventListener('DOMContentLoaded', tryAutoInit);
+
+  // expose
+  window.startAdminPremium = startAdminPremium;
+  window.stopAdminPremium = stopAdminPremium;
+
+})(); /* End PremiumAdminModule */
+
+
+
+
+
+
+
+
+
+
+
 // --- Load Withdrawals ---
 async function loadWithdrawals() {
   const snap = await db.collection('withdrawals').get();
@@ -2327,6 +2835,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -53,102 +53,332 @@ async function fetchStats() {
 
 
 // --- Load All Users with Filters + Stats ---
-let allUsersCache = []; // cache all users for search/filter
-async function loadUsers() {
-  const snap = await db.collection('users').orderBy('createdAt', 'desc').get();
-  allUsersCache = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  renderUsers(allUsersCache);
-  updateUserStats(allUsersCache);
-}
 
-// --- Render Users ---
-function renderUsers(users) {
-  const list = document.getElementById('user-list');
-  list.innerHTML = '';
+/* Users Admin Module
+   - Paste after firebase init (db should be firebase.firestore())
+   - Auto-inits when `db` exists and DOM is ready
+   - Exposes window.startUsersModule() and window.stopUsersModule()
+*/
+(function UsersAdminModule(){
+  // ----- config & state -----
+  let allUsersCache = []; // raw user objects { id, ...data }
+  let unsubscribe = null;
+  let searchTimer = null;
+  const DEBOUNCE_MS = 220;
 
-  users.forEach(data => {
-    const div = document.createElement('div');
-    div.className = "bg-white p-4 rounded-lg shadow-md border hover:shadow-lg transition";
-    div.innerHTML = `
-      <div class="font-semibold text-blue-600">Name: ${data.fullName || "Unnamed"}</div>
-      <div class="font-semibold text-green-600">Username: ${data.username || "N/A"}</div>
-      <div>Email: ${data.email || "N/A"}</div>
-      <div>UID: <span class="text-gray-500">${data.id}</span></div>
-      <div class="text-xs text-gray-400">Joined: ${data.createdAt?.toDate?.().toLocaleDateString() || "N/A"}</div>
-      <div class="mt-2 text-sm ${data.is_Premium ? "text-purple-600 font-bold" : "text-gray-500"}">
-        ${data.is_Premium ? "Premium User" : "Free User"}
-      </div>
-    `;
-    list.appendChild(div);
-  });
+  // ----- helpers -----
+  function safeEl(id) { return document.getElementById(id); }
 
-  if (users.length === 0) {
-    list.innerHTML = `<p class="text-center text-gray-500">No users found</p>`;
+  function toDateVal(v) {
+    if (!v) return null;
+    // Firestore client timestamp
+    if (typeof v.toDate === 'function') return v.toDate();
+    // possible Admin SDK shape
+    if (v._seconds || v.seconds) {
+      const secs = v._seconds || v.seconds;
+      return new Date(secs * 1000);
+    }
+    // number (ms or seconds)
+    if (typeof v === 'number') {
+      // heuristics: if > 1e12 it's ms; if < 1e12 it's secs
+      if (v > 1e12) return new Date(v);
+      return new Date(v * 1000);
+    }
+    // string
+    if (typeof v === 'string') {
+      const p = Date.parse(v);
+      return isNaN(p) ? null : new Date(p);
+    }
+    return null;
   }
-}
 
-// --- Update Stats ---
-function updateUserStats(users) {
-  const total = users.length;
-  const premium = users.filter(u => u.is_Premium).length;
+  function formatDate(d) {
+    if (!d) return 'N/A';
+    try { return d.toLocaleString(); } catch(e) { return String(d); }
+  }
 
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startYesterday = new Date(startToday.getTime() - 86400000);
-  const startWeek = new Date(now.getTime() - 7 * 86400000);
-  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  function emitConsole(...args) {
+    // small wrapper if you want to toggle logs
+    console.debug('[UsersAdmin]', ...args);
+  }
 
-  const joinedToday = users.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startToday).length;
-  const joinedWeek = users.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startWeek).length;
+  // ----- rendering -----
+  function renderUsers(users) {
+    const container = safeEl('user-list');
+    if (!container) return;
+    container.innerHTML = '';
 
-  document.getElementById("total-users").innerText = total;
-  document.getElementById("premium-users").innerText = premium;
-  document.getElementById("joined-today").innerText = joinedToday;
-  document.getElementById("joined-week").innerText = joinedWeek;
-}
+    if (!users || users.length === 0) {
+      container.innerHTML = `<p class="text-center text-gray-400">No users found</p>`;
+      return;
+    }
 
-// --- Search Function ---
-document.getElementById("user-search").addEventListener("input", (e) => {
-  const q = e.target.value.toLowerCase();
-  const filtered = allUsersCache.filter(u =>
-    (u.username || "").toLowerCase().includes(q) ||
-    (u.email || "").toLowerCase().includes(q) ||
-    (u.fullName || "").toLowerCase().includes(q) ||
-    (u.id || "").toLowerCase().includes(q)
-  );
-  renderUsers(filtered);
-});
-
-// --- Time Filter ---
-document.getElementById("time-filter").addEventListener("change", (e) => {
-  const filter = e.target.value;
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startYesterday = new Date(startToday.getTime() - 86400000);
-  const startWeek = new Date(now.getTime() - 7 * 86400000);
-  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  let filtered = allUsersCache;
-
-  if (filter === "today") {
-    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startToday);
-  } else if (filter === "yesterday") {
-    filtered = filtered.filter(u => {
-      const d = u.createdAt?.toDate?.();
-      return d && d >= startYesterday && d < startToday;
+    users.forEach(u => {
+      const joinedDate = toDateVal(u.createdAt);
+      const html = document.createElement('div');
+      html.className = "bg-white p-4 rounded-lg shadow-md border hover:shadow-lg transition";
+      html.innerHTML = `
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="font-semibold text-blue-600"> ${escapeHtml(u.fullName || u.displayName || 'Unnamed')}</div>
+            <div class="text-xs text-slate-400">${escapeHtml(u.email || '—')}</div>
+            <div class="text-xs text-gray-500 mt-1">UID: <span class="font-mono">${escapeHtml(u.id)}</span></div>
+            <div class="text-xs text-gray-400 mt-1">Joined: ${formatDate(joinedDate)}</div>
+          </div>
+          <div class="text-right">
+            <div class="${u.is_Premium ? 'text-purple-600 font-bold' : 'text-gray-500'} text-sm">
+              ${u.is_Premium ? 'Premium' : 'Free'}
+            </div>
+            <div class="text-xs text-slate-300 mt-3">Username: <span class="font-medium">${escapeHtml(u.username || '—')}</span></div>
+          </div>
+        </div>
+      `;
+      container.appendChild(html);
     });
-  } else if (filter === "7days") {
-    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startWeek);
-  } else if (filter === "30days") {
-    const start30 = new Date(now.getTime() - 30 * 86400000);
-    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= start30);
-  } else if (filter === "month") {
-    filtered = filtered.filter(u => u.createdAt?.toDate && u.createdAt.toDate() >= startMonth);
   }
 
-  renderUsers(filtered);
-});
+  // ----- search + filter logic -----
+  function applyTimeFilter(users, filterKey) {
+    if (!filterKey || filterKey === 'all') return users.slice();
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startYesterday = new Date(startToday.getTime() - 86400000);
+    const start7 = new Date(now.getTime() - 7 * 86400000);
+    const start30 = new Date(now.getTime() - 30 * 86400000);
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    return users.filter(u => {
+      const d = toDateVal(u.createdAt);
+      if (!d) return false;
+      if (filterKey === 'today') return d >= startToday;
+      if (filterKey === 'yesterday') return (d >= startYesterday && d < startToday);
+      if (filterKey === '7days') return d >= start7;
+      if (filterKey === '30days') return d >= start30;
+      if (filterKey === 'month') return d >= startMonth;
+      return true;
+    });
+  }
+
+  function applySearch(users, q) {
+    if (!q) return users.slice();
+    const s = q.trim().toLowerCase();
+    return users.filter(u => {
+      if (!u) return false;
+      const fields = [
+        (u.username || ''),
+        (u.email || ''),
+        (u.fullName || u.displayName || ''),
+        (u.id || '')
+      ];
+      return fields.some(f => String(f).toLowerCase().includes(s));
+    });
+  }
+
+  function renderUsersFromCache() {
+    const qEl = safeEl('user-search');
+    const timeEl = safeEl('time-filter');
+    const q = qEl ? qEl.value || '' : '';
+    const timeKey = timeEl ? timeEl.value : 'all';
+    let result = applyTimeFilter(allUsersCache, timeKey);
+    result = applySearch(result, q);
+    renderUsers(result);
+
+    // update visible count (if you want)
+    const statsContainer = safeEl('total-users');
+    if (statsContainer) statsContainer.innerText = allUsersCache.length;
+  }
+
+  // ----- aggregate stats -----
+  function updateUserStats(users) {
+    const totalEl = safeEl('total-users');
+    const premiumEl = safeEl('premium-users');
+    const todayEl = safeEl('joined-today');
+    const weekEl = safeEl('joined-week');
+
+    if (!totalEl || !premiumEl || !todayEl || !weekEl) return;
+
+    const total = users.length;
+    const premium = users.filter(u => !!u.is_Premium).length;
+
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const start7 = new Date(now.getTime() - 7 * 86400000);
+
+    const joinedToday = users.filter(u => {
+      const d = toDateVal(u.createdAt);
+      return d && d >= startToday;
+    }).length;
+
+    const joinedWeek = users.filter(u => {
+      const d = toDateVal(u.createdAt);
+      return d && d >= start7;
+    }).length;
+
+    totalEl.innerText = total;
+    premiumEl.innerText = premium;
+    todayEl.innerText = joinedToday;
+    weekEl.innerText = joinedWeek;
+  }
+
+  // ----- snapshot / loading -----
+  async function attachRealtime() {
+    if (typeof db === 'undefined') {
+      emitConsole('db not ready for realtime');
+      return fallbackLoad();
+    }
+    try {
+      const q = db.collection('users').orderBy('createdAt','desc');
+      unsubscribe = q.onSnapshot(handleSnapshot, (err) => {
+        console.warn('Realtime users snapshot error, falling back to once-off load:', err);
+        fallbackLoad();
+      });
+      emitConsole('attached realtime users listener');
+    } catch (err) {
+      // some projects may not have createdAt in all docs or security prevents orderBy; fallback
+      console.warn('attachRealtime error, fallback to get():', err);
+      return fallbackLoad();
+    }
+  }
+
+  async function fallbackLoad() {
+    try {
+      const snap = await db.collection('users').get();
+      handleSnapshot(snap);
+      emitConsole('loaded users via fallback get()');
+    } catch (e) {
+      console.error('fallbackLoad error', e);
+    }
+  }
+
+  function handleSnapshot(snap) {
+    // snap.docs is available for both onSnapshot and get()
+    const docs = snap.docs || [];
+    allUsersCache = docs.map(d => {
+      const data = d.data ? d.data() : d;
+      const out = Object.assign({}, data);
+      out.id = d.id || data.id || out.uid || out.userId || null;
+      return out;
+    });
+    // if some docs lack .id above we set it to doc.id (done)
+    updateUserStats(allUsersCache);
+    renderUsersFromCache();
+  }
+
+  function stopRealtime() {
+    if (unsubscribe) {
+      try { unsubscribe(); } catch (e) {}
+      unsubscribe = null;
+      emitConsole('realtime listener detached');
+    }
+  }
+
+  // ----- UI wiring -----
+  function wireUI() {
+    const searchEl = safeEl('user-search');
+    const timeEl = safeEl('time-filter');
+    const exportBtn = safeEl('export-users-csv');
+
+    if (searchEl) {
+      searchEl.addEventListener('input', (e) => {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          renderUsersFromCache();
+        }, DEBOUNCE_MS);
+      });
+    }
+
+    if (timeEl) {
+      timeEl.addEventListener('change', () => renderUsersFromCache());
+    }
+
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        exportUsersCSV(allUsersCache);
+      });
+    }
+  }
+
+  // ----- CSV export (optional) -----
+  function exportUsersCSV(users) {
+    if (!users || users.length === 0) return alert('No users to export');
+    const header = ['uid','fullName','username','email','is_Premium','createdAt'];
+    const rows = users.map(u => [
+      u.id || '',
+      (u.fullName || u.displayName || '').replace(/"/g,'""'),
+      (u.username || '').replace(/"/g,'""'),
+      (u.email || '').replace(/"/g,'""'),
+      !!u.is_Premium,
+      (toDateVal(u.createdAt) ? toDateVal(u.createdAt).toISOString() : '')
+    ]);
+    const csv = [header, ...rows].map(r => r.map(c => `"${String(c)}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `users-export-${(new Date()).toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ----- safe escape -----
+  function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, function (m) {
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];
+    });
+  }
+
+  // ----- public control -----
+  async function startUsersModule() {
+    wireUI();
+    if (typeof db === 'undefined') {
+      // wait for db to exist (poll)
+      let tries = 0;
+      const waitForDB = () => {
+        return new Promise((resolve) => {
+          const t = setInterval(() => {
+            if (typeof db !== 'undefined') {
+              clearInterval(t);
+              resolve(true);
+            }
+            tries++;
+            if (tries > 40) { clearInterval(t); resolve(false); }
+          }, 150);
+        });
+      };
+      const ok = await waitForDB();
+      if (!ok) {
+        console.error('UsersAdminModule: db not found, aborting.');
+        return;
+      }
+    }
+    // attach realtime listener (safe fallback inside)
+    attachRealtime();
+  }
+
+  function stopUsersModule() {
+    stopRealtime();
+  }
+
+  // auto-init when DOM ready and db is present
+  function tryAutoInit() {
+    if (!document.getElementById('users')) return; // no users tab on this page
+    startUsersModule().catch(e => console.warn('startUsersModule failed', e));
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    tryAutoInit();
+  } else {
+    window.addEventListener('DOMContentLoaded', tryAutoInit);
+  }
+
+  // expose
+  window.startUsersModule = startUsersModule;
+  window.stopUsersModule = stopUsersModule;
+
+})();
 
 
 
@@ -1869,6 +2099,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

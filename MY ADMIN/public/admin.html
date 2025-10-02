@@ -844,89 +844,298 @@
 
 
 
+<!-- Paste this after your Tailwind CSS (bottom of file or before </body>) -->
 <style>
-/* ===== Scrollbar Styling ===== */
-#admin-premium ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-#admin-premium ::-webkit-scrollbar-track {
-  background: transparent;
-}
-#admin-premium ::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #6366f1, #ec4899);
-  border-radius: 20px;
-}
-#admin-premium ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #4f46e5, #db2777);
+/* ===== Premium Admin — Flashy Theme (visual only, no JS changes) ===== */
+
+:root{
+  --accent-blue: #60a5fa;
+  --accent-purple: #a78bfa;
+  --accent-pink: #ec4899;
+  --accent-gold: #f59e0b;
+  --muted: #e8f6ff;
+  --glass: rgba(255,255,255,0.03);
+  --card-border: rgba(167,139,250,0.10);
 }
 
-/* ===== Table Styling ===== */
-#admin-premium table th {
-  font-weight: 600;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-#admin-premium table tbody tr {
-  transition: background 0.2s ease;
-}
-#admin-premium table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.05);
+/* Base background + text */
+#admin-premium {
+  color: var(--muted);
+  background: linear-gradient(135deg, #050d1b 0%, #071f2e 48%, #050d1b 100%);
 }
 
-/* ===== Buttons Hover Effects ===== */
-#admin-premium button {
-  transition: all 0.2s ease;
+/* Headline style */
+#admin-premium h1{
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+  text-shadow: 0 8px 30px rgba(99,102,241,0.06);
 }
-#admin-premium button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-}
-
-/* ===== Input & Select Focus ===== */
-#admin-premium input:focus, 
-#admin-premium select:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99,102,241,0.4);
-  outline: none;
-}
-
-/* ===== Modal Animation ===== */
-#pm-modal .relative {
-  animation: fadeInUp 0.35s ease;
-}
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+#admin-premium h1::after{
+  content: "";
+  display:block;
+  margin-top:0.5rem;
+  height:4px;
+  width:100%;
+  border-radius:8px;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple), var(--accent-pink));
+  opacity: 0.95;
+  transform-origin:left;
+  transition: transform .35s ease;
 }
 
-/* ===== Gradient Title Text Glow ===== */
-#admin-premium h1 {
-  text-shadow: 0 0 15px rgba(99, 102, 241, 0.6),
-               0 0 30px rgba(139, 92, 246, 0.4);
+/* Short description and small text */
+#admin-premium p, #admin-premium .text-slate-300, 
+#admin-premium .text-sm { color: #cfeeff !important; }
+
+/* Override pale "bg-white/X" utilities used in markup so they aren't bright white */
+#admin-premium [class*="bg-white/"], #admin-premium [class*="border-white/"] {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)) !important;
+  border-color: rgba(167,139,250,0.06) !important;
+  box-shadow: 0 10px 30px rgba(2,6,23,0.45) !important;
 }
 
-/* ===== Card Hover Glow ===== */
+/* Summary cards (p-4) */
 #admin-premium .p-4 {
-  transition: box-shadow 0.3s ease, transform 0.2s ease;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border-radius: 1rem;
+  border: 1px solid var(--card-border);
+  padding: 1rem;
+  backdrop-filter: blur(6px);
+  transition: transform .2s ease, box-shadow .25s ease;
 }
 #admin-premium .p-4:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  transform: translateY(-6px);
+  box-shadow: 0 30px 80px rgba(9,12,24,0.6);
 }
+#admin-premium .text-2xl.font-bold {
+  color: #fff;
+  text-shadow: 0 8px 24px rgba(99,102,241,0.06);
+}
+
+/* Buttons — gradients and subtle animation */
+#premium-export-users {
+  background: linear-gradient(90deg, #f59e0b, #f97316); /* premium-gold */
+  color: #08121a;
+  font-weight: 800;
+  padding: .58rem 1.05rem;
+  border-radius: .8rem;
+  box-shadow: 0 12px 40px rgba(245,158,11,0.12);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+#premium-export-users:hover { transform: translateY(-4px); box-shadow: 0 18px 60px rgba(245,158,11,0.18); }
+
+/* Export Events / Scan */
+#premium-export-events, #premium-scan-all {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.04);
+  padding: .5rem .9rem;
+  border-radius: .8rem;
+}
+#premium-export-events:hover, #premium-scan-all:hover {
+  background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+}
+
+/* Controls area (search, select, refresh) */
+#admin-premium .bg-white\/5 {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+}
+#pm-search {
+  color: #e6f7ff;
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: .75rem 1rem;
+  border-radius: 999px;
+}
+#pm-search::placeholder { color: rgba(206,230,255,0.5); }
+#pm-search:focus {
+  box-shadow: 0 8px 30px rgba(96,165,250,0.08);
+  border-color: rgba(96,165,250,0.45);
+}
+
+/* Select and refresh button */
+#pm-time-filter {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: var(--muted);
+}
+#pm-time-filter:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(167,139,250,0.12);
+  border-color: rgba(167,139,250,0.4);
+}
+#pm-refresh {
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+  color: white;
+  font-weight: 700;
+  padding: .55rem 1rem;
+  border-radius: .8rem;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+#pm-refresh:hover { transform: translateY(-3px); box-shadow: 0 14px 40px rgba(99,102,241,0.12); }
+
+/* Table styling */
+#admin-premium table {
+  color: #dbeeff;
+  width: 100%;
+  border-collapse: collapse;
+}
+#admin-premium thead tr th {
+  color: #cfeaff;
+  font-weight: 700;
+  font-size: .85rem;
+  padding: .8rem .6rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+#admin-premium tbody tr td {
+  padding: .85rem .6rem;
+  vertical-align: middle;
+  color: #dbeeff;
+}
+#admin-premium tbody tr:nth-child(odd) {
+  background: linear-gradient(90deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));
+}
+#admin-premium tbody tr:hover {
+  background: linear-gradient(90deg, rgba(96,165,250,0.03), rgba(167,139,250,0.02));
+}
+
+/* UID column mono + highlight */
+#admin-premium tbody tr td:first-child {
+  font-family: ui-monospace, "Roboto Mono", monospace;
+  color: #a5f3fc;
+  font-weight: 700;
+}
+
+/* Revenue highlight — animated sheen */
+#pm-revenue {
+  background: linear-gradient(90deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));
+  padding: .35rem .6rem;
+  border-radius: .6rem;
+  display: inline-block;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: 0 10px 40px rgba(245,158,11,0.06);
+  position: relative;
+  overflow: hidden;
+}
+@keyframes premiumShine {
+  0% { transform: translateX(-60%); opacity: 0.08;}
+  50% { transform: translateX(40%); opacity: 0.18;}
+  100% { transform: translateX(160%); opacity: 0.04;}
+}
+#pm-revenue::before{
+  content: "";
+  position: absolute;
+  left: -40%;
+  top: 0;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02));
+  filter: blur(18px);
+  animation: premiumShine 5.4s linear infinite;
+}
+
+/* Modal styling */
+#pm-modal .relative {
+  background: linear-gradient(180deg, rgba(7,18,40,0.96), rgba(6,22,40,0.98));
+  border: 1px solid rgba(167,139,250,0.12);
+  box-shadow: 0 30px 90px rgba(0,0,0,0.7);
+  border-radius: 18px;
+  overflow: hidden;
+}
+#pm-modal h3 { color: #fff; font-weight: 800; }
+#pm-modal button { background: rgba(255,255,255,0.04); color: #e6f7ff; }
+
+/* Make the realtime checkbox look like a modern switch (CSS-only) */
+#admin-premium label[for], #admin-premium label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .4rem .9rem;
+  border-radius: .9rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border: 1px solid rgba(255,255,255,0.04);
+}
+#admin-premium label input[type="checkbox"] {
+  /* keep input accessible but invisible — we will render switch with pseudo elements on span */
+  position: absolute;
+  left: 10px;
+  width: 44px;
+  height: 24px;
+  opacity: 0;
+  z-index: 3;
+  cursor: pointer;
+}
+#admin-premium label span {
+  position: relative;
+  display: inline-block;
+  padding-left: 54px; /* room for switch */
+  color: #cfeeff;
+  font-weight: 600;
+}
+#admin-premium label span::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+  box-shadow: inset 0 -4px 8px rgba(2,6,23,0.6);
+  border: 1px solid rgba(255,255,255,0.04);
+  transition: background .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+#admin-premium label span::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(6,12,24,0.6);
+  transition: transform .18s ease, left .18s ease;
+}
+/* checked state */
+#admin-premium label input[type="checkbox"]:checked + span::before {
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+  border-color: rgba(167,139,250,0.6);
+  box-shadow: 0 10px 30px rgba(167,139,250,0.12);
+}
+#admin-premium label input[type="checkbox"]:checked + span::after {
+  transform: translateY(-50%) translateX(20px);
+  background: #fff;
+}
+
+/* Slight responsive tweaks */
+@media (max-width: 768px){
+  #admin-premium .grid { grid-template-columns: repeat(2,1fr); }
+  #admin-premium h1::after { height:3px; }
+}
+
+/* Accessibility: focus ring for keyboard users */
+#admin-premium input:focus-visible, #admin-premium select:focus-visible, #admin-premium button:focus-visible {
+  outline: 3px solid rgba(99,102,241,0.14);
+  outline-offset: 3px;
+}
+
+/* Tiny polish for small texts and badges */
+#admin-premium .text-sm { color: rgba(207,233,255,0.95); font-weight:600; }
 </style>
 
 
 
 
 
+      
 
 
 
@@ -1281,6 +1490,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

@@ -1075,6 +1075,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
  
 
+
+
+
+
+
+
+
 // ===== Airtime/Data Admin Review =====
 
         
@@ -1293,200 +1300,437 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
+/*
+ Admin Referral Module (single-block)
+ - Paste after firebase init
+ - Exposes window.startAdminReferrals() and window.stopAdminReferrals()
+ - Non-scattered; all logic contained here
+*/
+(function AdminReferralModule(){
+  // ---------- CONFIG ----------
+  const REWARD_AMOUNT = 500; // must match your payment logic
+  const QUICK_SCAN_LIMIT = 1000; // quick scan cap
+  let allUsersCache = []; // cached user docs (objects with id & fields)
+  let referrerUserCache = new Map(); // username => userDoc (to get uid/displayName quickly)
+  let pollingInterval = null;
+  let realtimeEnabled = false;
 
-document.addEventListener("DOMContentLoaded", async () => {
-  const db = firebase.firestore();
+  // ---------- HELPERS ----------
+  function money(n){ return '₦' + Number(n || 0).toLocaleString(); }
+  function safeEl(id){ return document.getElementById(id); }
 
-  // KPI Elements
-  const kpiTotalUsers = document.getElementById("kpiTotalUsers");
-  const kpiTotalReferrals = document.getElementById("kpiTotalReferrals");
-  const kpiPremium = document.getElementById("kpiPremium");
-  const kpiCommission = document.getElementById("kpiCommission");
-
-  // Other Elements
-  const leaderboardBody = document.getElementById("leaderboardBody");
-  const chartNote = document.getElementById("chartNote");
-
-  // ==============================
-  // Load all users
-  // ==============================
-  async function loadUsers() {
-    const snap = await db.collection("users").get();
-    return snap.docs.map(d => ({
-      id: d.id,
-      username: d.data().username || "unknown",
-      referredBy: d.data().referredBy || null,
-      is_Premium: d.data().is_Premium || false,
-      joinedAt: d.data().joinedAt || null
-    }));
+  function toDateVal(v){
+    if (!v) return null;
+    if (typeof v.toDate === 'function') return v.toDate();
+    if (v._seconds || v.seconds) { const s = v._seconds || v.seconds; return new Date(s * 1000); }
+    if (typeof v === 'number') { return v > 1e12 ? new Date(v) : new Date(v * 1000); }
+    if (typeof v === 'string') { const p = Date.parse(v); return isNaN(p) ? null : new Date(p); }
+    return null;
   }
 
-  // ==============================
-  // KPIs
-  // ==============================
-  function loadKPIs(users) {
-    const totalUsers = users.length;
-    const referrals = users.filter(u => u.referredBy).length;
-    const premium = users.filter(u => u.is_Premium).length;
+  function escapeHtml(s){ if (s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]); }
 
-    // Commission only for premium referrals
-    const commission = users.filter(u => u.referredBy && u.is_Premium).length * 500;
-
-    kpiTotalUsers.textContent = totalUsers;
-    kpiTotalReferrals.textContent = referrals;
-    kpiPremium.textContent = premium;
-    kpiCommission.textContent = "₦" + commission.toLocaleString();
+  // ---------- RENDER: Summary ----------
+  function renderSummary(stats){
+    safeEl('ref-total-referred').innerText = stats.totalReferred;
+    safeEl('ref-total-awarded').innerText = money(stats.totalAwarded);
+    safeEl('ref-total-pending').innerText = money(stats.totalPending);
+    safeEl('ref-total-referrers').innerText = stats.totalReferrers;
   }
 
-  // ==============================
-  // Leaderboard
-  // ==============================
-  function buildLeaderboard(users) {
-    const refCounts = {};
-
-    users.forEach(u => {
-      if (u.referredBy && u.is_Premium) {
-        refCounts[u.referredBy] = (refCounts[u.referredBy] || 0) + 1;
-      }
+  // ---------- RENDER: Top referrers ----------
+  function renderTop(list){
+    const box = safeEl('ref-top-list');
+    box.innerHTML = '';
+    (list.slice(0,6)).forEach(r => {
+      const div = document.createElement('div');
+      div.className = 'p-3 rounded-xl bg-white/5 flex items-center justify-between';
+      div.innerHTML = `
+        <div>
+          <div class="font-semibold">${escapeHtml(r.username)}</div>
+          <div class="text-xs text-slate-300">${escapeHtml(r.displayName || r.email || '')}</div>
+        </div>
+        <div class="text-right">
+          <div class="font-bold">${r.totalReferred}</div>
+          <div class="text-xs text-gray-400">${money(r.totalRewards)}</div>
+        </div>
+      `;
+      box.appendChild(div);
     });
-
-    const top = Object.entries(refCounts)
-      .map(([uid, count]) => {
-        const referrer = users.find(x => x.id === uid);
-        return {
-          username: referrer?.username || "Unknown",
-          count,
-          earnings: count * 500
-        };
-      })
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-
-    leaderboardBody.innerHTML = top.map(t => `
-      <tr>
-        <td class="py-1 pr-2">@${t.username}</td>
-        <td class="py-1 pr-2 text-right">${t.count}</td>
-        <td class="py-1 text-right">₦${t.earnings.toLocaleString()}</td>
-      </tr>`).join("");
   }
 
-  // ==============================
-  // Referral Trend (last 14 days)
-  // ==============================
-  function buildChart(users) {
-    const ctx = document.getElementById("trendChart").getContext("2d");
-    const today = new Date();
+  // ---------- RENDER: Table ----------
+  function renderTable(refMapArr){
+    const tbody = safeEl('ref-table-body');
+    tbody.innerHTML = '';
+    if (refMapArr.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-400">No referrers found</td></tr>';
+      return;
+    }
+    refMapArr.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="px-3 py-2"><div class="font-mono text-xs">${escapeHtml(r.username)}</div></td>
+        <td class="px-3 py-2"><div class="font-medium">${escapeHtml(r.displayName || '')}</div><div class="text-xs text-slate-300">${escapeHtml(r.email || '')}</div></td>
+        <td class="px-3 py-2"><div class="font-semibold">${r.totalReferred}</div></td>
+        <td class="px-3 py-2">${r.awardedCount}</td>
+        <td class="px-3 py-2">${r.pendingCount}</td>
+        <td class="px-3 py-2 font-bold">${money(r.totalRewards)}</td>
+        <td class="px-3 py-2">
+          <button class="px-3 py-1 rounded-lg bg-white/6" data-ref="${escapeHtml(r.username)}">Details</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+      // wire details button
+      tr.querySelector('button')?.addEventListener('click', () => showReferrerDetails(r.username));
+    });
+  }
 
-    const labels = [];
-    const counts = [];
-
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const label = d.toISOString().slice(5, 10); // "MM-DD"
-      labels.push(label);
-      counts.push(0);
+  // ---------- AGGREGATION LOGIC ----------
+  async function aggregateFromUsers(users){
+    // users: array of docs with fields including .referrer (username), .is_Premium, .referralBonusCredited
+    const map = new Map(); // username => stats
+    let totalReferred = 0, totalAwarded = 0, totalPending = 0;
+    for (const u of users){
+      const ref = u.referrer || null;
+      if (!ref) continue;
+      totalReferred++;
+      const isPremium = !!u.is_Premium;
+      const credited = !!u.referralBonusCredited;
+      if (!map.has(ref)) map.set(ref, { username: ref, totalReferred: 0, awardedCount:0, pendingCount:0, totalRewards:0, displayName:'', email:'', uidOfReferrer:null });
+      const ent = map.get(ref);
+      ent.totalReferred += 1;
+      if (isPremium && credited) {
+        ent.awardedCount += 1;
+        ent.totalRewards += REWARD_AMOUNT;
+        totalAwarded += REWARD_AMOUNT;
+      } else if (isPremium && !credited) {
+        ent.pendingCount += 1;
+        totalPending += REWARD_AMOUNT;
+      }
     }
 
-    users.forEach(u => {
-      if (!u.joinedAt) return;
-      const joined = u.joinedAt.toDate ? u.joinedAt.toDate() : new Date(u.joinedAt);
-      const label = joined.toISOString().slice(5, 10);
-      const idx = labels.indexOf(label);
-      if (idx !== -1) counts[idx]++;
-    });
-
-    new Chart(ctx, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [{
-          label: "New Referrals",
-          data: counts,
-          fill: true,
-          borderColor: "#2563eb",
-          backgroundColor: "rgba(37,99,235,0.15)"
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } }
+    // Enrich stats with referrer profile (uid/displayName/email) if possible by looking up users with that username
+    const usernames = Array.from(map.keys()).slice(0, 1000); // batch limit to avoid too many queries
+    // Build a cache of username->userDoc if not present
+    const missing = usernames.filter(u => !referrerUserCache.has(u));
+    if (missing.length) {
+      // we will query users where username in missing (Firestore doesn't allow 'in' > 10) -> batch in groups of 10
+      const BATCH = 10;
+      for (let i = 0; i < missing.length; i += BATCH) {
+        const batch = missing.slice(i, i + BATCH);
+        try {
+          const q = db.collection('users').where('username','in', batch).get();
+          const snap = await q;
+          snap.forEach(d => {
+            const data = d.data(); data.id = d.id;
+            referrerUserCache.set(data.username, data);
+          });
+        } catch (e) {
+          // fallback: try single reads (slower)
+          for (const uname of batch) {
+            try {
+              const q2 = await db.collection('users').where('username','==', uname).limit(1).get();
+              if (!q2.empty) {
+                const d = q2.docs[0]; const dt = d.data(); dt.id = d.id;
+                referrerUserCache.set(uname, dt);
+              }
+            } catch(_) {}
+          }
+        }
       }
-    });
+    }
 
-    if (counts.every(c => c === 0)) chartNote.classList.remove("hidden");
+    // attach displayName/email/uid to map entries
+    for (const [uname, stat] of map.entries()){
+      const rdoc = referrerUserCache.get(uname);
+      if (rdoc) {
+        stat.displayName = rdoc.fullName || rdoc.displayName || '';
+        stat.email = rdoc.email || '';
+        stat.uidOfReferrer = rdoc.id || null;
+      }
+    }
+
+    // convert to array sorted by totalReferred desc
+    const arr = Array.from(map.values()).sort((a,b) => b.totalReferred - a.totalReferred);
+
+    return {
+      arr,
+      totals: {
+        totalReferred,
+        totalAwarded,
+        totalPending,
+        totalReferrers: map.size
+      }
+    };
   }
 
-  // ==============================
-  // User Explorer
-  // ==============================
-  function setupExplorer(users) {
-    const searchBtn = document.getElementById("searchBtn");
-    const searchInput = document.getElementById("searchUsername");
+  // ---------- DATA LOADING ----------
+  // Quick scan (first N) vs full paginated scan
+  async function quickScanUsers(limit = QUICK_SCAN_LIMIT){
+    const snap = await db.collection('users').limit(limit).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
 
-    searchBtn.addEventListener("click", () => {
-      const username = searchInput.value.trim().toLowerCase();
-      if (!username) return;
+  async function fullScanUsers(){
+    // paginated scan - be careful, this will read whole collection (costly)
+    const results = [];
+    let q = db.collection('users').orderBy('joinedAt','desc').limit(1000);
+    let snap = await q.get();
+    while (!snap.empty) {
+      snap.docs.forEach(d => results.push({ id: d.id, ...d.data() }));
+      if (snap.size < 1000) break;
+      const last = snap.docs[snap.docs.length - 1];
+      snap = await db.collection('users').orderBy('joinedAt','desc').startAfter(last).limit(1000).get();
+    }
+    return results;
+  }
 
-      const user = users.find(u => u.username.toLowerCase() === username);
-      if (!user) return alert("User not found");
+  // Main refresh function (by default quick)
+  async function refreshData({ fullScan=false } = {}){
+    try {
+      safeEl('ref-refresh').disabled = true;
+      safeEl('ref-refresh').innerText = 'Loading…';
+      allUsersCache = fullScan ? await fullScanUsers() : await quickScanUsers();
+      const { arr, totals } = await aggregateFromUsers(allUsersCache);
+      // render
+      renderSummary({ totalReferred: totals.totalReferred, totalAwarded: totals.totalAwarded, totalPending: totals.totalPending, totalReferrers: totals.totalReferrers });
+      renderTop(arr);
+      renderTable(arr);
+    } catch (e) {
+      console.error('refreshData error', e);
+      alert('Failed to load referral data. Check console.');
+    } finally {
+      safeEl('ref-refresh').disabled = false;
+      safeEl('ref-refresh').innerText = 'Refresh';
+    }
+  }
 
-      // Direct referrals
-      const directs = users.filter(u => u.referredBy === user.id);
-
-      // Second-level referrals
-      const seconds = users.filter(u => directs.map(d => d.id).includes(u.referredBy));
-
-      // Earnings from premium directs
-      const earnings = directs.filter(u => u.is_Premium).length * 500;
-
-      document.getElementById("uDirectCount").textContent = directs.length;
-      document.getElementById("uSecondCount").textContent = seconds.length;
-      document.getElementById("uEarnings").textContent = "₦" + earnings.toLocaleString();
-
-      document.getElementById("userRefLink").value = `${window.location.origin}/signup?ref=${user.id}`;
-      document.getElementById("userPanel").classList.remove("hidden");
-
-      // Render direct referrals
-      const list = document.getElementById("uList");
-      list.innerHTML = "";
-      directs.forEach(d => {
-        const div = document.createElement("div");
-        div.className = "p-3 rounded-lg border";
-        div.textContent = `@${d.username}${d.is_Premium ? " ⭐" : ""}`;
-        list.appendChild(div);
+  // ---------- DETAILS modal ----------
+  async function showReferrerDetails(refUsername){
+    // fetch referred users where referrer == refUsername (limit large)
+    const snap = await db.collection('users').where('referrer','==', refUsername).orderBy('joinedAt','desc').get();
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // modal content
+    const content = safeEl('ref-modal-content');
+    const title = safeEl('ref-modal-title');
+    title.innerText = `Referrer: ${refUsername} — ${rows.length} referred`;
+    content.innerHTML = '';
+    if (rows.length === 0) {
+      content.innerHTML = '<p class="text-gray-400">No referrals for this user.</p>';
+    } else {
+      rows.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'p-3 rounded-xl bg-white/5 flex items-center justify-between';
+        const joined = toDateVal(r.joinedAt);
+        div.innerHTML = `
+          <div>
+            <div class="font-semibold">${escapeHtml(r.username || r.fullName || '—')}</div>
+            <div class="text-xs text-slate-300">${escapeHtml(r.email || '—')}</div>
+            <div class="text-xs text-gray-400">Joined: ${joined ? joined.toLocaleString() : '—'}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-sm ${r.is_Premium ? 'text-green-400 font-bold' : 'text-gray-400'}">${r.is_Premium ? 'Premium' : 'Free'}</div>
+            <div class="text-xs ${r.referralBonusCredited ? 'text-slate-300' : 'text-yellow-300'}">${r.referralBonusCredited ? 'Credited' : (r.is_Premium ? 'Pending credit' : 'No credit')}</div>
+            <div class="mt-2">
+              ${ r.is_Premium && !r.referralBonusCredited ? `<button class="px-3 py-1 rounded-lg bg-emerald-500 text-black" data-credit="${r.id}">Mark as credited</button>` : '' }
+            </div>
+          </div>
+        `;
+        content.appendChild(div);
+        // wire admin credit button
+        const btn = div.querySelector('button[data-credit]');
+        if (btn) {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.innerText = 'Processing…';
+            try {
+              // perform transactional credit
+              await adminCreditReferral(r.id, refUsername);
+              // update UI
+              btn.innerText = 'Credited';
+              await refreshData({ fullScan: false }); // refresh caches
+              showReferrerDetails(refUsername); // re-open / refresh modal (or update)
+            } catch (e) {
+              console.error(e);
+              alert('Credit failed: see console');
+              btn.disabled = false;
+              btn.innerText = 'Mark as credited';
+            }
+          });
+        }
       });
-    });
+    }
+    // show modal
+    safeEl('ref-modal').classList.remove('hidden');
+  }
 
-    // Copy link
-    document.getElementById("copyLinkBtn").addEventListener("click", () => {
-      const input = document.getElementById("userRefLink");
-      input.select();
-      document.execCommand("copy");
-      alert("Link copied!");
-    });
+  // close modal wiring
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'ref-modal-close') {
+      safeEl('ref-modal').classList.add('hidden');
+    }
+  });
 
-    // Share link
-    document.getElementById("shareLinkBtn").addEventListener("click", () => {
-      const link = document.getElementById("userRefLink").value;
-      if (navigator.share) {
-        navigator.share({ title: "Join via my referral", url: link });
+  // ---------- ADMIN TRANSACTION: mark referred user as credited ----------
+  // Mirrors your processReferralCreditTx but resolves referrer UID via username
+  async function adminCreditReferral(referredUserId, referrerUsername){
+    // find referrer UID
+    let refDoc = referrerUserCache.get(referrerUsername);
+    if (!refDoc) {
+      // try to fetch
+      const q = await db.collection('users').where('username','==', referrerUsername).limit(1).get();
+      if (!q.empty) {
+        const d = q.docs[0]; refDoc = { id: d.id, ...d.data() }; referrerUserCache.set(referrerUsername, refDoc);
       } else {
-        alert("Sharing not supported. Copy link instead.");
+        throw new Error('Referrer user not found for username: ' + referrerUsername);
       }
+    }
+    const referrerUid = refDoc.id;
+    // transaction: check referred is premium & not credited; update both docs atomically
+    return db.runTransaction(async tx => {
+      const referredRef = db.collection('users').doc(referredUserId);
+      const referrerRef = db.collection('users').doc(referrerUid);
+      const [rSnap, refSnap] = await Promise.all([tx.get(referredRef), tx.get(referrerRef)]);
+      if (!rSnap.exists) throw new Error('Referred user doc missing');
+      const rData = rSnap.data();
+      if (!rData.is_Premium) throw new Error('Referred user is not premium');
+      if (rData.referralBonusCredited) return; // already
+      const cur = (refSnap.exists && (refSnap.data().balance || 0)) || 0;
+      const curNum = (typeof cur === 'number' && isFinite(cur)) ? cur : Number(cur) || 0;
+      tx.update(referrerRef, { balance: curNum + REWARD_AMOUNT });
+      tx.update(referredRef, { referralBonusCredited: true });
     });
   }
 
-  // ==============================
-  // Init
-  // ==============================
-  const users = await loadUsers();
-  loadKPIs(users);
-  buildLeaderboard(users);
-  buildChart(users);
-  setupExplorer(users);
+  // ---------- EXPORT ----------
+  function exportReferrersCSV(arr){
+    // arr: array of aggregated referrer stats
+    if (!arr || arr.length === 0) return alert('Nothing to export');
+    const header = ['username','displayName','email','totalReferred','awardedCount','pendingCount','totalRewards'];
+    const rows = arr.map(r => [r.username, r.displayName||'', r.email||'', r.totalReferred, r.awardedCount, r.pendingCount, r.totalRewards]);
+    const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `referrers-${(new Date()).toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
 
-});
+  // ---------- UI wiring ----------
+  function wireUI(){
+    safeEl('ref-refresh').addEventListener('click', () => refreshData({ fullScan: false }));
+    safeEl('ref-scan-all').addEventListener('click', async () => {
+      if (!confirm('This will scan ALL users (can be expensive). Continue?')) return;
+      await refreshData({ fullScan: true });
+    });
+    safeEl('ref-export-agg').addEventListener('click', async () => {
+      // rebuild arr quickly from current cache
+      const agg = await aggregateFromUsers(allUsersCache);
+      exportReferrersCSV(agg.arr);
+    });
+    safeEl('ref-realtime-toggle').addEventListener('change', (e) => {
+      realtimeEnabled = !!e.target.checked;
+      if (realtimeEnabled) {
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    });
+    // search + time filter
+    const searchEl = safeEl('ref-search'), timeEl = safeEl('ref-time-filter');
+    let searchTimer = null;
+    if (searchEl) {
+      searchEl.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => applyClientFilter(), 250);
+      });
+    }
+    if (timeEl) timeEl.addEventListener('change', () => applyClientFilter());
+  }
+
+  // client-side filter on aggregated array (we maintain lastAgg array)
+  let lastAggArray = [];
+  function applyClientFilter(){
+    const q = safeEl('ref-search').value.trim().toLowerCase();
+    const timeKey = safeEl('ref-time-filter').value;
+    // filter by username/displayName/email matches
+    let arr = lastAggArray.slice();
+    if (q) arr = arr.filter(r => (r.username||'').toLowerCase().includes(q) || (r.displayName||'').toLowerCase().includes(q) || (r.email||'').toLowerCase().includes(q));
+    // time filter: filter referrers who have referred users within timeframe (we will scan allUsersCache to check dates)
+    if (timeKey && timeKey !== 'all') {
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startY = new Date(startToday.getTime() - 86400000);
+      const start7 = new Date(now.getTime() - 7 * 86400000);
+      const start30 = new Date(now.getTime() - 30 * 86400000);
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      // precompute map of referrer -> hasRecent
+      const hasRecent = new Set();
+      for (const u of allUsersCache) {
+        const d = toDateVal(u.joinedAt);
+        if (!d) continue;
+        let ok = false;
+        if (timeKey === 'today' && d >= startToday) ok = true;
+        if (timeKey === 'yesterday' && d >= startY && d < startToday) ok = true;
+        if (timeKey === '7days' && d >= start7) ok = true;
+        if (timeKey === '30days' && d >= start30) ok = true;
+        if (timeKey === 'month' && d >= startMonth) ok = true;
+        if (ok && u.referrer) hasRecent.add(u.referrer);
+      }
+      arr = arr.filter(r => hasRecent.has(r.username));
+    }
+    renderTop(arr);
+    renderTable(arr);
+  }
+
+  // ---------- POLLING for realtime-ish ----------
+  function startPolling(){
+    stopPolling();
+    pollingInterval = setInterval(() => refreshData({ fullScan: false }), 8000);
+  }
+  function stopPolling(){ if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; } }
+
+  // ---------- PUBLIC START ----------
+  async function startAdminReferrals(){
+    wireUI();
+    // initial quick load
+    await refreshData({ fullScan: false });
+    // set lastAggArray from last refresh
+    // unfortunately aggregateFromUsers returns arr only inside refreshData; to keep it simple, call refreshData again to populate lastAggArray
+    try {
+      const { arr } = await aggregateFromUsers(allUsersCache);
+      lastAggArray = arr;
+    } catch(e){}
+  }
+
+  function stopAdminReferrals(){
+    stopPolling();
+  }
+
+  // expose
+  window.startAdminReferrals = startAdminReferrals;
+  window.stopAdminReferrals = stopAdminReferrals;
+
+  // auto-init if admin-referrals element is present and db exists
+  function tryAutoInit(){
+    if (!document.getElementById('admin-referrals')) return;
+    if (typeof db === 'undefined') {
+      // wait for db
+      const t = setInterval(() => {
+        if (typeof db !== 'undefined') {
+          clearInterval(t);
+          startAdminReferrals().catch(e => console.error(e));
+        }
+      }, 250);
+    } else {
+      startAdminReferrals().catch(e => console.error(e));
+    }
+  }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') tryAutoInit();
+  else window.addEventListener('DOMContentLoaded', tryAutoInit);
+
+})();
+
 
 
 
@@ -2083,6 +2327,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

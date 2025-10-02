@@ -77,6 +77,13 @@
 
 
 
+
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('admin-premium')">
+          <i data-lucide="banknote" class="w-5 h-5"></i>  Premium overview
+        </button> 
+
+
+
       </nav>
     </aside>
 
@@ -733,7 +740,198 @@
 
 
 
+      
+<!-- Admin Premium overview-->
+      
+<section id="admin-premium" class="tab-section hidden min-h-screen p-6 bg-gradient-to-br from-[#050d1b] via-[#071f2e] to-[#050d1b] text-white">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">Premium Admin Console</h1>
+      <p class="text-sm text-slate-300 mt-1">Track premium upgrades, revenue, and manage premium access.</p>
+    </div>
 
+    <div class="flex items-center gap-3">
+      <button id="premium-export-users" class="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-pink-500 text-white shadow-md">Export Users CSV</button>
+      <button id="premium-export-events" class="px-4 py-2 rounded-xl bg-white/6 text-white">Export Events</button>
+      <button id="premium-scan-all" class="px-3 py-2 rounded-xl bg-white/6 hover:bg-white/10">Recalculate (scan all)</button>
+      <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5">
+        <input id="premium-realtime-toggle" type="checkbox" />
+        <span class="text-sm text-slate-300">Realtime</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="p-4 rounded-2xl bg-white/6 backdrop-blur-md border border-white/6">
+      <div class="text-sm text-slate-300">Total Users</div>
+      <div id="pm-total-users" class="text-2xl font-bold mt-1">—</div>
+    </div>
+
+    <div class="p-4 rounded-2xl bg-gradient-to-r from-purple-600/20 to-pink-600/10 border border-purple-500/10">
+      <div class="text-sm text-slate-300">Premium Users</div>
+      <div id="pm-total-premium" class="text-2xl font-bold mt-1">—</div>
+    </div>
+
+    <div class="p-4 rounded-2xl bg-white/6 backdrop-blur-md border border-white/6">
+      <div class="text-sm text-slate-300">Upgrades Today</div>
+      <div id="pm-upgrades-today" class="text-2xl font-bold mt-1">—</div>
+    </div>
+
+    <div class="p-4 rounded-2xl bg-white/6 backdrop-blur-md border border-white/6">
+      <div class="text-sm text-slate-300">Revenue (₦)</div>
+      <div id="pm-revenue" class="text-2xl font-bold mt-1">—</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 bg-white/5 p-3 rounded-2xl">
+    <div class="relative flex-1 max-w-xl w-full">
+      <input id="pm-search" type="search" placeholder="Search by UID, username, full name, or email..."
+             class="w-full pl-10 pr-4 py-2 rounded-full bg-transparent border border-white/10 placeholder:text-slate-400 focus:outline-none" />
+      <svg class="w-5 h-5 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1110.5 3a7.5 7.5 0 016.15 13.65z" />
+      </svg>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <select id="pm-time-filter" class="p-2 rounded-xl bg-white/5 border border-white/10">
+        <option value="all">All time</option>
+        <option value="today">Joined Today</option>
+        <option value="yesterday">Joined Yesterday</option>
+        <option value="7days">Last 7 days</option>
+        <option value="30days">Last 30 days</option>
+        <option value="month">This Month</option>
+      </select>
+
+      <button id="pm-refresh" class="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Users table -->
+  <div class="bg-white/5 p-4 rounded-2xl shadow-lg overflow-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="text-slate-300 text-left">
+          <th class="px-3 py-2">UID</th>
+          <th class="px-3 py-2">Name / Email</th>
+          <th class="px-3 py-2">Premium</th>
+          <th class="px-3 py-2">Joined</th>
+          <th class="px-3 py-2">Balance</th>
+          <th class="px-3 py-2">Upgraded At</th>
+          <th class="px-3 py-2">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="pm-table-body" class="divide-y divide-white/6"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Premium Events Modal -->
+<div id="pm-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('pm-modal').classList.add('hidden')"></div>
+  <div class="relative max-w-3xl w-full bg-[#071228] rounded-2xl p-6 z-10 text-white shadow-xl border border-purple-500/20">
+    <div class="flex items-center justify-between mb-4">
+      <h3 id="pm-modal-title" class="font-bold">Premium Events</h3>
+      <button id="pm-modal-close" class="px-3 py-1 rounded-lg bg-white/6">Close</button>
+    </div>
+    <div id="pm-modal-content" class="space-y-3 max-h-[60vh] overflow-auto"></div>
+  </div>
+</div>
+
+
+
+
+
+<style>
+/* ===== Scrollbar Styling ===== */
+#admin-premium ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+#admin-premium ::-webkit-scrollbar-track {
+  background: transparent;
+}
+#admin-premium ::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #6366f1, #ec4899);
+  border-radius: 20px;
+}
+#admin-premium ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, #4f46e5, #db2777);
+}
+
+/* ===== Table Styling ===== */
+#admin-premium table th {
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+#admin-premium table tbody tr {
+  transition: background 0.2s ease;
+}
+#admin-premium table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ===== Buttons Hover Effects ===== */
+#admin-premium button {
+  transition: all 0.2s ease;
+}
+#admin-premium button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+
+/* ===== Input & Select Focus ===== */
+#admin-premium input:focus, 
+#admin-premium select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.4);
+  outline: none;
+}
+
+/* ===== Modal Animation ===== */
+#pm-modal .relative {
+  animation: fadeInUp 0.35s ease;
+}
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== Gradient Title Text Glow ===== */
+#admin-premium h1 {
+  text-shadow: 0 0 15px rgba(99, 102, 241, 0.6),
+               0 0 30px rgba(139, 92, 246, 0.4);
+}
+
+/* ===== Card Hover Glow ===== */
+#admin-premium .p-4 {
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+#admin-premium .p-4:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+</style>
+
+
+
+
+
+
+
+
+
+      
 
 
 
@@ -1083,6 +1281,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

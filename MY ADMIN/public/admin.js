@@ -2711,6 +2711,307 @@ async function loadWithdrawals() {
 
 
 
+
+
+
+
+
+
+
+
+/* ===== payments-main.js (paste into main.js) =====
+   This code expects firebase to already be initialized (firebase.app()).
+   It uses the following collections (adjust names if your DB uses different names):
+     - Deposit
+     - Withdraw
+     - Transaction
+     - users  (for refund walletBalance)
+------------------------------------------------------------------------- */
+
+(function () {
+  // shortguards
+  if (typeof firebase === 'undefined') {
+    console.error('Firebase not found. Initialize firebase before running payments code.');
+    return;
+  }
+  const db = firebase.firestore();
+
+  /* -------------------------
+     Element refs
+     ------------------------- */
+  const tabDepositBtn = document.getElementById('payments-tab-deposit');
+  const tabWithdrawBtn = document.getElementById('payments-tab-withdraw');
+  const viewDeposit = document.getElementById('payments-view-deposit');
+  const viewWithdraw = document.getElementById('payments-view-withdraw');
+
+  // deposit DOM
+  const elDepositsToday = document.getElementById('p-deposits-today');
+  const elDepositsYesterday = document.getElementById('p-deposits-yesterday');
+  const elDepositsTotal = document.getElementById('p-deposits-total');
+  const tbodyDeposits = document.getElementById('p-deposits-tbody');
+
+  // withdraw DOM
+  const elWithdrawProcessing = document.getElementById('p-withdraw-processing');
+  const elWithdrawSuccess = document.getElementById('p-withdraw-success');
+  const elWithdrawRejected = document.getElementById('p-withdraw-rejected');
+  const tbodyWithdraws = document.getElementById('p-withdraw-tbody');
+  const withdrawFilter = document.getElementById('p-withdraw-filter');
+
+  /* -------------------------
+     Tabs behavior
+     ------------------------- */
+  tabDepositBtn.addEventListener('click', () => {
+    tabDepositBtn.classList.add('bg-indigo-600','text-white'); tabDepositBtn.classList.remove('bg-gray-100');
+    tabWithdrawBtn.classList.remove('bg-indigo-600','text-white'); tabWithdrawBtn.classList.add('bg-gray-100');
+    viewDeposit.classList.remove('hidden'); viewWithdraw.classList.add('hidden');
+  });
+
+  tabWithdrawBtn.addEventListener('click', () => {
+    tabWithdrawBtn.classList.add('bg-indigo-600','text-white'); tabWithdrawBtn.classList.remove('bg-gray-100');
+    tabDepositBtn.classList.remove('bg-indigo-600','text-white'); tabDepositBtn.classList.add('bg-gray-100');
+    viewWithdraw.classList.remove('hidden'); viewDeposit.classList.add('hidden');
+  });
+
+  /* -------------------------
+     Helpers
+     ------------------------- */
+  function formatDate(ts) {
+    if (!ts) return '';
+    try {
+      const d = (ts.toDate) ? ts.toDate() : new Date(ts);
+      return d.toLocaleString();
+    } catch (e) {
+      return String(ts);
+    }
+  }
+  function money(n) { return "₦" + Number(n || 0).toLocaleString(); }
+  function isSameDay(a,b) {
+    return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+  }
+  function subDays(date, n) { const x = new Date(date); x.setDate(x.getDate()-n); return x; }
+
+  /* -------------------------
+     Deposits: realtime listener
+     ------------------------- */
+  db.collection('Deposit').orderBy('createdAt','desc').onSnapshot(snap => {
+    const deposits = [];
+    snap.forEach(d => deposits.push({ id: d.id, ...d.data() }));
+
+    // totals
+    const now = new Date();
+    const todayCount = deposits.filter(d => {
+      const dt = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+      return isSameDay(dt, now);
+    }).length;
+    const yesterdayCount = deposits.filter(d => {
+      const dt = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+      return isSameDay(dt, subDays(now,1));
+    }).length;
+
+    elDepositsToday.textContent = todayCount;
+    elDepositsYesterday.textContent = yesterdayCount;
+    elDepositsTotal.textContent = deposits.length;
+
+    // render list
+    tbodyDeposits.innerHTML = '';
+    deposits.forEach(d => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-t';
+      tr.innerHTML = `
+        <td class="py-3">${d.username || ''}</td>
+        <td>${d.userId || ''}</td>
+        <td>${money(d.amount)}</td>
+        <td>${d.reference || ''}</td>
+        <td>${formatDate(d.createdAt)}</td>
+        <td><span class="text-xs font-semibold ${d.status==='successful' ? 'text-green-700' : 'text-yellow-600'}">${d.status || ''}</span></td>
+      `;
+      tbodyDeposits.appendChild(tr);
+    });
+  }, err => console.error('Deposit listener error', err));
+
+  /* -------------------------
+     Withdraws: realtime + filter
+     ------------------------- */
+  function fetchAndRenderWithdraws() {
+    db.collection('Withdraw').orderBy('timestamp','desc').get().then(qs => {
+      const arr = [];
+      qs.forEach(d => arr.push({ id: d.id, ...d.data() }));
+      renderWithdraws(arr);
+      // also update counts
+      elWithdrawProcessing.textContent = arr.filter(x => x.status === 'processing').length;
+      elWithdrawSuccess.textContent = arr.filter(x => x.status === 'successful').length;
+      elWithdrawRejected.textContent = arr.filter(x => x.status === 'rejected').length;
+    }).catch(err => console.error('fetch withdraws err', err));
+  }
+
+  // initial with realtime update (also keep updating counts)
+  db.collection('Withdraw').orderBy('timestamp','desc').onSnapshot(snap => {
+    const list = [];
+    snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+    renderWithdraws(list);
+    elWithdrawProcessing.textContent = list.filter(x => x.status === 'processing').length;
+    elWithdrawSuccess.textContent = list.filter(x => x.status === 'successful').length;
+    elWithdrawRejected.textContent = list.filter(x => x.status === 'rejected').length;
+  }, err => console.error('Withdraw onSnapshot err', err));
+
+  withdrawFilter.addEventListener('change', fetchAndRenderWithdraws);
+
+  function renderWithdraws(withdraws) {
+    let rows = withdraws;
+    const f = withdrawFilter.value || 'processing';
+    if (f === 'processing') rows = withdraws.filter(w => w.status === 'processing');
+    if (f === 'completed') rows = withdraws.filter(w => w.status === 'successful' || w.status === 'rejected');
+
+    tbodyWithdraws.innerHTML = '';
+    rows.forEach(w => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-t';
+
+      // columns
+      const userIdTd = document.createElement('td'); userIdTd.className = 'py-2'; userIdTd.textContent = w.userId || '';
+      const accNameTd = document.createElement('td'); accNameTd.textContent = w.account_name || '';
+      const accNoTd = document.createElement('td'); accNoTd.textContent = w.accNum || '';
+      const bankTd = document.createElement('td'); bankTd.textContent = w.bankName || '';
+      const amountTd = document.createElement('td'); amountTd.textContent = money(w.amount);
+      const dateTd = document.createElement('td'); dateTd.textContent = formatDate(w.timestamp);
+      const statusTd = document.createElement('td'); statusTd.innerHTML = `<span class="text-xs font-semibold ${w.status==='processing' ? 'text-yellow-600' : w.status==='successful' ? 'text-green-700' : 'text-red-700'}">${w.status}</span>`;
+
+      // action cell
+      const actionTd = document.createElement('td');
+      if (w.status === 'processing') {
+        const okBtn = document.createElement('button');
+        okBtn.className = 'px-3 py-1 bg-green-100 text-green-700 rounded mr-2 text-xs';
+        okBtn.textContent = 'Mark Successful';
+        okBtn.addEventListener('click', () => onMarkSuccessful(w));
+
+        const rejBtn = document.createElement('button');
+        rejBtn.className = 'px-3 py-1 bg-red-100 text-red-700 rounded text-xs';
+        rejBtn.textContent = 'Mark Rejected';
+        rejBtn.addEventListener('click', () => onMarkRejected(w));
+
+        actionTd.appendChild(okBtn); actionTd.appendChild(rejBtn);
+      } else {
+        const span = document.createElement('span');
+        span.className = 'px-2 py-1 text-xs font-semibold ' + (w.status === 'successful' ? 'text-green-700' : 'text-red-700');
+        span.textContent = w.status;
+        actionTd.appendChild(span);
+      }
+
+      tr.appendChild(userIdTd);
+      tr.appendChild(accNameTd);
+      tr.appendChild(accNoTd);
+      tr.appendChild(bankTd);
+      tr.appendChild(amountTd);
+      tr.appendChild(dateTd);
+      tr.appendChild(statusTd);
+      tr.appendChild(actionTd);
+
+      tbodyWithdraws.appendChild(tr);
+    });
+  }
+
+  /* -------------------------
+     Action flows
+     - onMarkSuccessful: set Withdraw.status => successful; update Transaction(s)
+     - onMarkRejected: set Withdraw.status => rejected; update Transaction(s); refund user walletBalance
+     ------------------------- */
+
+  // Helper: finds related transaction docs (fallback) and updates status (if you have transactionId on withdraw doc, prefer direct update)
+  async function findAndUpdateRelatedTransactions(withdrawDoc, status) {
+    try {
+      // If withdrawDoc.transactionId exists -> direct update (recommended)
+      if (withdrawDoc.transactionId) {
+        await db.collection('Transaction').doc(withdrawDoc.transactionId).update({ status });
+        return true;
+      }
+
+      // fallback: query Transaction by userId & type and filter client-side
+      const qSnap = await db.collection('Transaction')
+        .where('userId','==', withdrawDoc.userId || '')
+        .where('type','==','Withdraw')
+        .get();
+
+      const ops = [];
+      qSnap.forEach(docSnap => {
+        const tx = { id: docSnap.id, ...docSnap.data() };
+        // crude matching: same amount OR tx.status processing => update
+        let ok = false;
+        if (Number(tx.amount) === Number(withdrawDoc.amount)) ok = true;
+        if (tx.status === 'processing') ok = true;
+        if (ok) ops.push(db.collection('Transaction').doc(docSnap.id).update({ status }).catch(e => console.error('tx update err', e)));
+      });
+      await Promise.all(ops);
+      return true;
+    } catch (err) {
+      console.error('findAndUpdateRelatedTransactions err', err);
+      return false;
+    }
+  }
+
+  async function onMarkSuccessful(withdrawDoc) {
+    if (!confirm('Mark this withdrawal as SUCCESSFUL?')) return;
+    try {
+      // update withdraw doc status -> successful
+      await db.collection('Withdraw').doc(withdrawDoc.id).update({ status: 'successful' });
+      // update transaction(s)
+      await findAndUpdateRelatedTransactions(withdrawDoc, 'successful');
+      alert('Withdrawal marked successful.');
+    } catch (err) {
+      console.error('mark successful err', err);
+      alert('Failed to mark successful: ' + (err.message || err));
+    }
+  }
+
+  async function onMarkRejected(withdrawDoc) {
+    if (!confirm('Mark this withdrawal as REJECTED and refund the user?')) return;
+    const userId = withdrawDoc.userId;
+    const amount = Number(withdrawDoc.amount || 0);
+    if (!userId) {
+      alert('Withdraw doc missing userId — cannot refund automatically.');
+      return;
+    }
+
+    try {
+      // 1) update withdraw status
+      await db.collection('Withdraw').doc(withdrawDoc.id).update({ status: 'rejected' });
+
+      // 2) update transaction(s)
+      await findAndUpdateRelatedTransactions(withdrawDoc, 'rejected');
+
+      // 3) refund to user walletBalance (assumes 'users' collection and walletBalance field)
+      await db.collection('users').doc(userId).update({
+        walletBalance: firebase.firestore.FieldValue.increment(amount)
+      });
+
+      alert('Withdrawal rejected and wallet credited.');
+    } catch (err) {
+      console.error('reject withdraw err', err);
+      alert('Failed to reject withdrawal: ' + (err.message || err));
+    }
+  }
+
+  /* -------------------------
+     Initial fetch
+     ------------------------- */
+  // Optionally call this to ensure initial render if realtime hasn't fired yet
+  fetchAndRenderWithdraws();
+  // deposits handled by realtime listener above (no explicit fetch function needed)
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // DASHBOARD NOTIFICATION ONLY
 async function sendDashboardNotification() {
   const title = document.getElementById("notifTitle").value.trim();
@@ -2835,6 +3136,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

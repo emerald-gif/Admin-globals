@@ -372,7 +372,6 @@ async function fetchStats() {
 
 
 
-// Load All Submitted Jobs
 // --- Keep your original function intact. We'll call it for "All" tab.
 async function fetchPendingJobsForAdmin() {
   const pendingContainer = document.getElementById("adminPendingJobs");
@@ -3329,6 +3328,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

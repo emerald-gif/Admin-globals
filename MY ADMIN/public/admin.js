@@ -373,6 +373,7 @@ async function fetchStats() {
 
 
 // Load All Submitted Jobs
+// --- Keep your original function intact. We'll call it for "All" tab.
 async function fetchPendingJobsForAdmin() {
   const pendingContainer = document.getElementById("adminPendingJobs");
   pendingContainer.innerHTML = "<p class='text-gray-500'>Loading pending jobs...</p>";
@@ -406,31 +407,7 @@ async function fetchPendingJobsForAdmin() {
 
     pendingContainer.innerHTML = "";
     pendingJobs.forEach(job => {
-      const card = `
-        <div class="p-4 border border-gray-200 shadow-sm rounded-2xl bg-white hover:shadow-md transition">
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-gray-800">${job.title}</h3>
-            <span class="px-2 py-1 text-xs rounded-full ${job.type === 'task' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}">
-              ${job.type}
-            </span>
-          </div>
-          <p class="mt-2 text-gray-600"><strong>By:</strong> ${job.postedBy?.name || "Unknown"}</p>
-          <p class="text-gray-600"><strong>Total:</strong> ₦${Number(job.total).toLocaleString()}</p>
-          <p class="text-gray-500 text-sm mt-1">Status: ${job.status}</p>
-          <div class="mt-4 flex gap-2">
-            <button onclick="openJobModal('${job.id}', '${job.type}')" class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700">
-              View Details
-            </button>
-            <button onclick="approveJob('${job.id}', '${job.type}')" class="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">
-              Approve
-            </button>
-            <button onclick="rejectJob('${job.id}', '${job.type}')" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700">
-              Reject
-            </button>
-          </div>
-        </div>
-      `;
-      pendingContainer.innerHTML += card;
+      pendingContainer.innerHTML += renderJobCard(job);
     });
 
   } catch (error) {
@@ -439,7 +416,99 @@ async function fetchPendingJobsForAdmin() {
   }
 }
 
-// ---------- APPROVE ----------
+/* ---------- NEW: Generic renderer for a job card (used across panels) ---------- */
+function renderJobCard(job) {
+  // make numbers safe
+  const total = Number(job.total || 0).toLocaleString();
+  const poster = job.postedBy?.name || "Unknown";
+  const tagClass = job.type === "task" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600";
+
+  return `
+    <div class="p-4 border border-gray-200 shadow-sm rounded-2xl bg-white hover:shadow-md transition">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-gray-800">${escapeHtml(job.title || "No title")}</h3>
+        <span class="px-2 py-1 text-xs rounded-full ${tagClass}">${job.type || "job"}</span>
+      </div>
+
+      <p class="mt-2 text-gray-600"><strong>By:</strong> ${escapeHtml(poster)}</p>
+      <p class="text-gray-600"><strong>Total:</strong> ₦${total}</p>
+      <p class="text-gray-500 text-sm mt-1">Status: ${escapeHtml(job.status || "")}</p>
+
+      <div class="mt-4 flex gap-2">
+        <button onclick="openJobModal('${job.id}', '${job.type}')" class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 text-sm">View</button>
+        <button onclick="approveJob('${job.id}', '${job.type}')" class="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 text-sm">Approve</button>
+        <button onclick="rejectJob('${job.id}', '${job.type}')" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 text-sm">Reject</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- Escape helper to avoid injection when inserting strings into HTML ---------- */
+function escapeHtml(str){
+  if (str == null) return "";
+  return String(str)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+/* ---------- Focused fetch: Tasks (pending + history) ---------- */
+async function fetchTasksPanel() {
+  const pendingEl = document.getElementById("tasksPending");
+  const historyEl = document.getElementById("tasksHistory");
+
+  pendingEl.innerHTML = "<p class='text-gray-500'>Loading...</p>";
+  historyEl.innerHTML = "<p class='text-gray-500'>Loading...</p>";
+
+  try {
+    // pending
+    const pendingSnap = await db.collection("tasks").where("status", "==", "on review").get();
+    const pending = [];
+    pendingSnap.forEach(d => { const data = d.data(); data.id = d.id; data.type="task"; pending.push(data); });
+
+    // history (approved or rejected)
+    const historySnap = await db.collection("tasks").where("status", "in", ["approved","rejected"]).orderBy("postedAt","desc").limit(50).get();
+    const history = [];
+    historySnap.forEach(d => { const data = d.data(); data.id = d.id; data.type="task"; history.push(data); });
+
+    pendingEl.innerHTML = pending.length ? pending.map(renderJobCard).join("") : "<p class='text-gray-500'>No pending tasks.</p>";
+    historyEl.innerHTML = history.length ? history.map(renderJobCard).join("") : "<p class='text-gray-500'>No task history.</p>";
+  } catch (err) {
+    console.error("Error fetching tasks:", err);
+    pendingEl.innerHTML = "<p class='text-red-600'>Failed to load.</p>";
+    historyEl.innerHTML = "<p class='text-red-600'>Failed to load.</p>";
+  }
+}
+
+/* ---------- Focused fetch: Affiliates (pending + history) ---------- */
+async function fetchAffiliatesPanel() {
+  const pendingEl = document.getElementById("affiliatesPending");
+  const historyEl = document.getElementById("affiliatesHistory");
+
+  pendingEl.innerHTML = "<p class='text-gray-500'>Loading...</p>";
+  historyEl.innerHTML = "<p class='text-gray-500'>Loading...</p>";
+
+  try {
+    const pendingSnap = await db.collection("affiliateJobs").where("status", "==", "on review").get();
+    const pending = [];
+    pendingSnap.forEach(d => { const data = d.data(); data.id = d.id; data.type="affiliate"; pending.push(data); });
+
+    const historySnap = await db.collection("affiliateJobs").where("status", "in", ["approved","rejected"]).orderBy("postedAt","desc").limit(50).get();
+    const history = [];
+    historySnap.forEach(d => { const data = d.data(); data.id = d.id; data.type="affiliate"; history.push(data); });
+
+    pendingEl.innerHTML = pending.length ? pending.map(renderJobCard).join("") : "<p class='text-gray-500'>No pending affiliates.</p>";
+    historyEl.innerHTML = history.length ? history.map(renderJobCard).join("") : "<p class='text-gray-500'>No affiliate history.</p>";
+  } catch (err) {
+    console.error("Error fetching affiliates:", err);
+    pendingEl.innerHTML = "<p class='text-red-600'>Failed to load.</p>";
+    historyEl.innerHTML = "<p class='text-red-600'>Failed to load.</p>";
+  }
+}
+
+/* ---------- Approve / Reject (kept behavior from your original functions) ---------- */
 function approveJob(jobId, jobType) {
   const collectionName = jobType === "affiliate" ? "affiliateJobs" : "tasks";
   firebase.firestore().collection(collectionName).doc(jobId).update({
@@ -447,31 +516,34 @@ function approveJob(jobId, jobType) {
   }).then(() => {
     alert('✅ Job approved successfully');
     closeJobModal();
-    fetchPendingJobsForAdmin();
+    // refresh currently visible panel
+    refreshCurrentPanel();
   }).catch((error) => {
     console.error('❌ Error approving job:', error);
     alert("Error approving job: " + error.message);
   });
 }
 
-// ---------- REJECT ----------
 async function rejectJob(jobId, jobType) {
   const collectionName = jobType === "affiliate" ? "affiliateJobs" : "tasks";
   try {
     await db.collection(collectionName).doc(jobId).update({ status: "rejected" });
     alert("🚫 Job rejected.");
     closeJobModal();
-    fetchPendingJobsForAdmin();
+    refreshCurrentPanel();
   } catch (err) {
     console.error("Error rejecting job:", err);
     alert("❌ Failed to reject job.");
   }
 }
 
-// ---------- MODAL ----------
+/* ---------- Shared Modal logic (enhanced; shows postedBy block) ---------- */
 async function openJobModal(jobId, jobType) {
   const modal = document.getElementById("jobDetailsModal");
   const content = document.getElementById("jobDetailsContent");
+  const headerTitle = document.getElementById("jobDetailsTitle");
+  const headerMeta = document.getElementById("jobDetailsMeta");
+  const posterPhoto = document.getElementById("posterPhoto");
   const approveBtn = document.getElementById("approveBtnModal");
   const rejectBtn = document.getElementById("rejectBtnModal");
 
@@ -481,36 +553,50 @@ async function openJobModal(jobId, jobType) {
 
   if (!job) return alert("Job not found.");
 
+  // header
+  headerTitle.textContent = job.title || "No title";
+  headerMeta.textContent = `${job.type || jobType} • ${job.postedBy?.name || "Unknown"}`;
+
+  if (job.postedBy?.photo) {
+    posterPhoto.src = job.postedBy.photo;
+    posterPhoto.classList.remove("hidden");
+  } else {
+    posterPhoto.classList.add("hidden");
+  }
+
+  // body content (type-specific)
   let html = "";
   if (jobType === "task") {
     html = `
-      <p><strong>Title:</strong> ${job.title}</p>
-      <p><strong>Category:</strong> ${job.category} / ${job.subCategory}</p>
-      <p><strong>Description:</strong> ${job.description}</p>
-      <p><strong>Workers:</strong> ${job.numWorkers}</p>
-      <p><strong>Worker Earn:</strong> ₦${job.workerEarn}</p>
-      <p><strong>Total:</strong> ₦${job.total}</p>
+      <p><strong>Category:</strong> ${escapeHtml(job.category || "")} ${job.subCategory ? " / " + escapeHtml(job.subCategory) : ""}</p>
+      <p><strong>Description:</strong> ${escapeHtml(job.description || "—")}</p>
+      <p><strong>Workers:</strong> ${escapeHtml(job.numWorkers || "0")}</p>
+      <p><strong>Worker Earn:</strong> ₦${Number(job.workerEarn||0).toLocaleString()}</p>
+      <p><strong>Total:</strong> ₦${Number(job.total||0).toLocaleString()}</p>
       ${job.screenshotURL ? `<img src="${job.screenshotURL}" class="w-full mt-2 rounded-lg">` : ""}
-      <p class="mt-2"><strong>Proof:</strong> ${job.proof || "—"}</p>
+      <p class="mt-2"><strong>Proof:</strong> ${escapeHtml(job.proof || "—")}</p>
+      <hr class="my-2">
+      <p class="text-xs text-gray-500">Posted: ${job.postedAt ? new Date(job.postedAt.seconds * 1000).toLocaleString() : "Unknown"}</p>
     `;
   } else {
     html = `
-      <p><strong>Title:</strong> ${job.title}</p>
-      <p><strong>Category:</strong> ${job.category}</p>
-      <p><strong>Instructions:</strong> ${job.instructions}</p>
-      <p><strong>Target Link:</strong> <a href="${job.targetLink}" target="_blank" class="text-blue-600 underline">${job.targetLink}</a></p>
-      <p><strong>Workers:</strong> ${job.numWorkers}</p>
-      <p><strong>Worker Pay:</strong> ₦${job.workerPay}</p>
-      <p><strong>Total:</strong> ₦${job.total}</p>
+      <p><strong>Category:</strong> ${escapeHtml(job.category || "")}</p>
+      <p><strong>Instructions:</strong> ${escapeHtml(job.instructions || "—")}</p>
+      <p><strong>Target Link:</strong> ${job.targetLink ? `<a href="${job.targetLink}" target="_blank" class="text-blue-600 underline">${escapeHtml(job.targetLink)}</a>` : "—"}</p>
+      <p><strong>Workers:</strong> ${escapeHtml(job.numWorkers || "0")}</p>
+      <p><strong>Worker Pay:</strong> ₦${Number(job.workerPay||0).toLocaleString()}</p>
+      <p><strong>Total:</strong> ₦${Number(job.total||0).toLocaleString()}</p>
       ${job.campaignLogoURL ? `<img src="${job.campaignLogoURL}" class="w-full mt-2 rounded-lg">` : ""}
-      <p class="mt-2"><strong>Proof Required:</strong> ${job.proofRequired}</p>
+      <p class="mt-2"><strong>Proof Required:</strong> ${escapeHtml(job.proofRequired ? job.proofRequired.toString() : "—")}</p>
+      <hr class="my-2">
+      <p class="text-xs text-gray-500">Posted: ${job.postedAt ? new Date(job.postedAt.seconds * 1000).toLocaleString() : "Unknown"}</p>
     `;
   }
 
   content.innerHTML = html;
   modal.classList.remove("hidden");
 
-  // Attach buttons
+  // Attach actions
   approveBtn.onclick = () => approveJob(jobId, jobType);
   rejectBtn.onclick = () => rejectJob(jobId, jobType);
 }
@@ -518,6 +604,64 @@ async function openJobModal(jobId, jobType) {
 function closeJobModal() {
   document.getElementById("jobDetailsModal").classList.add("hidden");
 }
+
+/* ---------- Tab switching + refresh helpers ---------- */
+function hideAllPanels() {
+  document.getElementById("panelAll").classList.add("hidden");
+  document.getElementById("panelTasks").classList.add("hidden");
+  document.getElementById("panelAffiliates").classList.add("hidden");
+}
+
+function refreshCurrentPanel() {
+  if (!document.getElementById("panelAll").classList.contains("hidden")) {
+    fetchPendingJobsForAdmin();
+  } else if (!document.getElementById("panelTasks").classList.contains("hidden")) {
+    fetchTasksPanel();
+  } else if (!document.getElementById("panelAffiliates").classList.contains("hidden")) {
+    fetchAffiliatesPanel();
+  }
+}
+
+/* ---------- Init: wire UI + default loads ---------- */
+document.getElementById("tabAll").addEventListener("click", () => {
+  hideAllPanels();
+  document.getElementById("panelAll").classList.remove("hidden");
+  // visual active styles
+  setActiveTab("tabAll");
+  fetchPendingJobsForAdmin();
+});
+
+document.getElementById("tabTasks").addEventListener("click", () => {
+  hideAllPanels();
+  document.getElementById("panelTasks").classList.remove("hidden");
+  setActiveTab("tabTasks");
+  fetchTasksPanel();
+});
+
+document.getElementById("tabAffiliates").addEventListener("click", () => {
+  hideAllPanels();
+  document.getElementById("panelAffiliates").classList.remove("hidden");
+  setActiveTab("tabAffiliates");
+  fetchAffiliatesPanel();
+});
+
+document.getElementById("refreshTasksBtn").addEventListener("click", fetchTasksPanel);
+document.getElementById("refreshAffiliatesBtn").addEventListener("click", fetchAffiliatesPanel);
+
+function setActiveTab(tabId) {
+  ["tabAll","tabTasks","tabAffiliates"].forEach(id => {
+    const el = document.getElementById(id);
+    if (id === tabId) {
+      el.classList.add("bg-gray-100");
+    } else {
+      el.classList.remove("bg-gray-100");
+    }
+  });
+}
+
+/* ---------- Initial load (show All by default) ---------- */
+setActiveTab("tabAll");
+fetchPendingJobsForAdmin();
 
 
 
@@ -3185,6 +3329,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

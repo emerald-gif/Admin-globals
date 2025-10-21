@@ -187,10 +187,33 @@
       
       <!-- Tasks -->
       <section id="adminReviewJobsSection" class="tab hidden mt-6">
-        <h2 class="text-2xl font-bold mb-4">Pending Job Approvals</h2>
-        <div id="adminPendingJobs" class="space-y-4"></div>
-      </section>
+  <h2 class="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">
+    <i class="fas fa-hourglass-half text-blue-600"></i> Pending Job Approvals
+  </h2>
 
+  <div id="adminPendingJobs" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</section>
+
+<!-- Job Details Modal -->
+<div id="jobDetailsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 relative">
+    <button onclick="closeJobModal()" class="absolute top-3 right-3 text-gray-500 hover:text-red-500 text-xl">&times;</button>
+    <h3 class="text-xl font-semibold mb-3 text-gray-800">Job Details</h3>
+    <div id="jobDetailsContent" class="space-y-3 text-sm text-gray-700"></div>
+
+    <div class="mt-6 flex justify-end gap-2">
+      <button id="approveBtnModal" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">Approve</button>
+      <button id="rejectBtnModal" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">Reject</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+      
       <!-- Task Submissions -->
       <section id="taskSubmissionsTab" class="tab hidden mt-6">
         <h2 class="text-2xl font-bold mb-4">Task Submissions</h2>
@@ -1582,6 +1605,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

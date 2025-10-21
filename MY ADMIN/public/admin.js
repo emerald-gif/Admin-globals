@@ -2909,169 +2909,211 @@ async function loadWithdrawals() {
 
 
 /* ===== PAYMENTS SECTION FINAL FIX (DOM guaranteed) ===== */
-(function initPaymentsModule() {
-  'use strict';
 
-  // Helper: wait until a DOM element exists
-  function waitForEl(id, callback, checkMs = 100) {
-    const el = document.getElementById(id);
-    if (el) return callback(el);
-    setTimeout(() => waitForEl(id, callback, checkMs), checkMs);
+
+
+/* ===== DEPOSITS MODULE ===== */
+(function () {
+  if (typeof firebase === "undefined" || !firebase.firestore) {
+    console.error("Firebase not initialized.");
+    return;
   }
 
-  // Wait for withdraw table body before doing anything
-  waitForEl('p-withdraw-tbody', function startPayments() {
-    console.log('[Payments] DOM elements ready, initializing...');
+  const db = firebase.firestore();
 
-    if (typeof firebase === 'undefined' || !firebase.firestore) {
-      console.error('[Payments] Firebase not found or not initialized.');
-      return;
-    }
+  // DOM elements
+  const tbody = document.getElementById("p-deposits-tbody");
+  const elToday = document.getElementById("p-deposits-today");
+  const elYesterday = document.getElementById("p-deposits-yesterday");
+  const elTotal = document.getElementById("p-deposits-total");
 
-    const db = firebase.firestore();
+  function money(n) {
+    return "₦" + Number(n || 0).toLocaleString();
+  }
+  function formatDate(ts) {
+    if (!ts) return "";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString();
+  }
+  function isSameDay(a, b) {
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
+  }
+  function subDays(date, n) {
+    const x = new Date(date);
+    x.setDate(x.getDate() - n);
+    return x;
+  }
 
-    // Element refs
-    const tabDepositBtn = document.getElementById('payments-tab-deposit');
-    const tabWithdrawBtn = document.getElementById('payments-tab-withdraw');
-    const viewDeposit = document.getElementById('payments-view-deposit');
-    const viewWithdraw = document.getElementById('payments-view-withdraw');
-
-    const elDepositsToday = document.getElementById('p-deposits-today');
-    const elDepositsYesterday = document.getElementById('p-deposits-yesterday');
-    const elDepositsTotal = document.getElementById('p-deposits-total');
-    const tbodyDeposits = document.getElementById('p-deposits-tbody');
-
-    const elWithdrawProcessing = document.getElementById('p-withdraw-processing');
-    const elWithdrawSuccess = document.getElementById('p-withdraw-success');
-    const elWithdrawRejected = document.getElementById('p-withdraw-rejected');
-    const tbodyWithdraws = document.getElementById('p-withdraw-tbody');
-    const withdrawFilter = document.getElementById('p-withdraw-filter');
-
-    /* ---------------- Tabs ---------------- */
-    tabDepositBtn.addEventListener('click', () => {
-      tabDepositBtn.classList.add('bg-indigo-600','text-white');
-      tabWithdrawBtn.classList.remove('bg-indigo-600','text-white');
-      viewDeposit.classList.remove('hidden');
-      viewWithdraw.classList.add('hidden');
-    });
-
-    tabWithdrawBtn.addEventListener('click', () => {
-      tabWithdrawBtn.classList.add('bg-indigo-600','text-white');
-      tabDepositBtn.classList.remove('bg-indigo-600','text-white');
-      viewWithdraw.classList.remove('hidden');
-      viewDeposit.classList.add('hidden');
-    });
-
-    /* ---------------- Helpers ---------------- */
-    function formatDate(ts) {
-      if (!ts) return '';
-      const d = ts.toDate ? ts.toDate() : new Date(ts);
-      return d.toLocaleString();
-    }
-    function money(n) { return "₦" + Number(n || 0).toLocaleString(); }
-    function isSameDay(a,b) {
-      return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-    }
-    function subDays(date, n) { const x = new Date(date); x.setDate(x.getDate()-n); return x; }
-
-    /* ---------------- DEPOSITS ---------------- */
-    db.collection('Deposit').orderBy('createdAt','desc').onSnapshot(snap => {
+  // Realtime listener
+  db.collection("Deposit")
+    .orderBy("createdAt", "desc")
+    .onSnapshot((snap) => {
       const deposits = [];
-      snap.forEach(d => deposits.push({ id: d.id, ...d.data() }));
+      snap.forEach((d) => deposits.push({ id: d.id, ...d.data() }));
 
       const now = new Date();
-      const todayCount = deposits.filter(d => {
+      const today = deposits.filter((d) => {
         const dt = d.createdAt?.toDate?.() || new Date(d.createdAt);
         return isSameDay(dt, now);
       }).length;
-      const yesterdayCount = deposits.filter(d => {
+      const yesterday = deposits.filter((d) => {
         const dt = d.createdAt?.toDate?.() || new Date(d.createdAt);
-        return isSameDay(dt, subDays(now,1));
+        return isSameDay(dt, subDays(now, 1));
       }).length;
 
-      elDepositsToday.textContent = todayCount;
-      elDepositsYesterday.textContent = yesterdayCount;
-      elDepositsTotal.textContent = deposits.length;
+      elToday.textContent = today;
+      elYesterday.textContent = yesterday;
+      elTotal.textContent = deposits.length;
 
-      tbodyDeposits.innerHTML = '';
-      deposits.forEach(d => {
-        const tr = document.createElement('tr');
-        tr.className = 'border-t';
+      tbody.innerHTML = "";
+      if (deposits.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="6" class="py-3 text-center text-gray-400 text-sm">No deposits yet</td></tr>';
+        return;
+      }
+
+      deposits.forEach((d) => {
+        const tr = document.createElement("tr");
+        tr.className = "border-t";
         tr.innerHTML = `
-          <td class="py-3">${d.username || ''}</td>
-          <td>${d.userId || ''}</td>
+          <td class="py-3">${d.username || "-"}</td>
+          <td>${d.userId || "-"}</td>
           <td>${money(d.amount)}</td>
-          <td>${d.reference || ''}</td>
+          <td>${d.reference || "-"}</td>
           <td>${formatDate(d.createdAt)}</td>
-          <td><span class="text-xs font-semibold ${d.status==='successful' ? 'text-green-700' : 'text-yellow-600'}">${d.status || ''}</span></td>
+          <td><span class="text-xs font-semibold ${
+            d.status === "successful" ? "text-green-700" : "text-yellow-600"
+          }">${d.status || ""}</span></td>
         `;
-        tbodyDeposits.appendChild(tr);
+        tbody.appendChild(tr);
       });
     });
-
-    /* ---------------- WITHDRAWALS ---------------- */
-    function renderWithdraws(withdraws) {
-      tbodyWithdraws.innerHTML = '';
-      const filter = withdrawFilter.value || 'processing';
-      const filtered = filter === 'processing' ? withdraws.filter(w => w.status === 'processing')
-                     : filter === 'completed' ? withdraws.filter(w => ['successful','rejected'].includes(w.status))
-                     : withdraws;
-
-      filtered.forEach(w => {
-        const tr = document.createElement('tr');
-        tr.className = 'border-t';
-        tr.innerHTML = `
-          <td>${w.userId || ''}</td>
-          <td>${w.account_name || ''}</td>
-          <td>${w.accNum || ''}</td>
-          <td>${w.bankName || ''}</td>
-          <td>${money(w.amount)}</td>
-          <td>${formatDate(w.timestamp)}</td>
-          <td><span class="text-xs font-semibold ${w.status==='processing' ? 'text-yellow-600' : w.status==='successful' ? 'text-green-700' : 'text-red-700'}">${w.status}</span></td>
-          <td>
-            ${w.status === 'processing' ? `
-              <button class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs mr-1" onclick="markWithdrawSuccess('${w.id}','${w.userId}')">✅</button>
-              <button class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs" onclick="markWithdrawReject('${w.id}','${w.userId}',${w.amount})">❌</button>
-            ` : '<span class="text-gray-400 text-xs">Done</span>'}
-          </td>
-        `;
-        tbodyWithdraws.appendChild(tr);
-      });
-    }
-
-    function updateWithdrawCounts(list) {
-      elWithdrawProcessing.textContent = list.filter(x => x.status === 'processing').length;
-      elWithdrawSuccess.textContent = list.filter(x => x.status === 'successful').length;
-      elWithdrawRejected.textContent = list.filter(x => x.status === 'rejected').length;
-    }
-
-    db.collection('Withdraw').orderBy('timestamp','desc').onSnapshot(snap => {
-      const list = [];
-      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      renderWithdraws(list);
-      updateWithdrawCounts(list);
-    });
-
-    /* ---------------- ACTIONS ---------------- */
-    window.markWithdrawSuccess = async function (id, userId) {
-      if (!confirm("Mark withdrawal as SUCCESSFUL?")) return;
-      await db.collection('Withdraw').doc(id).update({ status: 'successful' });
-      await db.collection('Transaction').doc(id).update({ status: 'successful' }).catch(()=>{});
-      alert("Marked successful ✅");
-    };
-
-    window.markWithdrawReject = async function (id, userId, amt) {
-      if (!confirm("Reject withdrawal and refund user?")) return;
-      await db.collection('Withdraw').doc(id).update({ status: 'rejected' });
-      await db.collection('Transaction').doc(id).update({ status: 'rejected' }).catch(()=>{});
-      await db.collection('users').doc(userId).update({
-        walletBalance: firebase.firestore.FieldValue.increment(Number(amt) || 0)
-      });
-      alert("Rejected & refunded ❌");
-    };
-  });
 })();
 
+
+
+
+
+
+
+/* ===== WITHDRAWALS MODULE ===== */
+(function () {
+  if (typeof firebase === "undefined" || !firebase.firestore) {
+    console.error("Firebase not initialized.");
+    return;
+  }
+  const db = firebase.firestore();
+
+  const tbody = document.getElementById("p-withdraw-tbody");
+  const elProc = document.getElementById("p-withdraw-processing");
+  const elSucc = document.getElementById("p-withdraw-success");
+  const elRej = document.getElementById("p-withdraw-rejected");
+  const filterSel = document.getElementById("p-withdraw-filter");
+
+  function money(n) {
+    return "₦" + Number(n || 0).toLocaleString();
+  }
+  function formatDate(ts) {
+    if (!ts) return "";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString();
+  }
+
+  function render(withdraws) {
+    const filter = filterSel.value || "processing";
+    let filtered = withdraws;
+    if (filter === "processing") filtered = withdraws.filter((x) => x.status === "processing");
+    else if (filter === "completed")
+      filtered = withdraws.filter((x) =>
+        ["successful", "rejected"].includes(x.status)
+      );
+
+    tbody.innerHTML = "";
+    if (filtered.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="8" class="py-3 text-center text-gray-400 text-sm">No data</td></tr>';
+      return;
+    }
+
+    filtered.forEach((w) => {
+      const tr = document.createElement("tr");
+      tr.className = "border-t";
+      tr.innerHTML = `
+        <td>${w.userId || ""}</td>
+        <td>${w.account_name || ""}</td>
+        <td>${w.accNum || ""}</td>
+        <td>${w.bankName || ""}</td>
+        <td>${money(w.amount)}</td>
+        <td>${formatDate(w.timestamp)}</td>
+        <td><span class="text-xs font-semibold ${
+          w.status === "processing"
+            ? "text-yellow-600"
+            : w.status === "successful"
+            ? "text-green-700"
+            : "text-red-700"
+        }">${w.status}</span></td>
+        <td>
+          ${
+            w.status === "processing"
+              ? `
+            <button class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs mr-1" onclick="markWithdrawSuccess('${w.id}','${w.userId}')">✅</button>
+            <button class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs" onclick="markWithdrawReject('${w.id}','${w.userId}',${w.amount})">❌</button>`
+              : `<span class="text-gray-400 text-xs">Done</span>`
+          }
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function updateCounts(list) {
+    elProc.textContent = list.filter((x) => x.status === "processing").length;
+    elSucc.textContent = list.filter((x) => x.status === "successful").length;
+    elRej.textContent = list.filter((x) => x.status === "rejected").length;
+  }
+
+  // Realtime listener
+  db.collection("Withdraw")
+    .orderBy("timestamp", "desc")
+    .onSnapshot((snap) => {
+      const list = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+      render(list);
+      updateCounts(list);
+    });
+
+  filterSel.addEventListener("change", () => {
+    db.collection("Withdraw")
+      .orderBy("timestamp", "desc")
+      .get()
+      .then((snap) => {
+        const list = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        render(list);
+      });
+  });
+
+  // Actions
+  window.markWithdrawSuccess = async function (id, userId) {
+    if (!confirm("Mark as successful?")) return;
+    await db.collection("Withdraw").doc(id).update({ status: "successful" });
+    await db.collection("Transaction").doc(id).update({ status: "successful" }).catch(()=>{});
+    alert("Marked as successful ✅");
+  };
+
+  window.markWithdrawReject = async function (id, userId, amount) {
+    if (!confirm("Reject and refund user?")) return;
+    await db.collection("Withdraw").doc(id).update({ status: "rejected" });
+    await db.collection("Transaction").doc(id).update({ status: "rejected" }).catch(()=>{});
+    await db.collection("users").doc(userId).update({
+      walletBalance: firebase.firestore.FieldValue.increment(Number(amount) || 0),
+    });
+    alert("Rejected & user refunded ❌");
+  };
+})();
 
 
 
@@ -3205,6 +3247,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

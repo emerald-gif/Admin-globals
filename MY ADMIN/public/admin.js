@@ -2908,270 +2908,289 @@ async function loadWithdrawals() {
 
 
 
+/* ===== payments-main.js (robust element-wait + original logic) =====
+   Safe to paste into main.js. No imports. Assumes firebase initialized.
+*/
 
-/* ===== payments-main.js (safe DOM version) ===== */
-document.addEventListener("DOMContentLoaded", function () {
-  (function () {
-    // shortguards
+document.addEventListener('DOMContentLoaded', function () {
+  (function paymentsSafeInit() {
     if (typeof firebase === 'undefined') {
-      console.error('Firebase not found. Initialize firebase before running payments code.');
+      console.error('[Payments] firebase not found. Initialize firebase first.');
       return;
     }
     const db = firebase.firestore();
 
-    /* -------------------------
-       Element refs
-       ------------------------- */
-    const tabDepositBtn = document.getElementById('payments-tab-deposit');
-    const tabWithdrawBtn = document.getElementById('payments-tab-withdraw');
-    const viewDeposit = document.getElementById('payments-view-deposit');
-    const viewWithdraw = document.getElementById('payments-view-withdraw');
+    // List of element IDs we need for this module to run
+    const requiredIds = [
+      'payments-tab-deposit', 'payments-tab-withdraw', 'payments-view-deposit', 'payments-view-withdraw',
+      'p-deposits-today','p-deposits-yesterday','p-deposits-total','p-deposits-tbody',
+      'p-withdraw-processing','p-withdraw-success','p-withdraw-rejected','p-withdraw-tbody','p-withdraw-filter'
+    ];
 
-    // deposit DOM
-    const elDepositsToday = document.getElementById('p-deposits-today');
-    const elDepositsYesterday = document.getElementById('p-deposits-yesterday');
-    const elDepositsTotal = document.getElementById('p-deposits-total');
-    const tbodyDeposits = document.getElementById('p-deposits-tbody');
-
-    // withdraw DOM
-    const elWithdrawProcessing = document.getElementById('p-withdraw-processing');
-    const elWithdrawSuccess = document.getElementById('p-withdraw-success');
-    const elWithdrawRejected = document.getElementById('p-withdraw-rejected');
-    const tbodyWithdraws = document.getElementById('p-withdraw-tbody');
-    const withdrawFilter = document.getElementById('p-withdraw-filter');
-
-    // check DOM exists before doing anything
-    if (!viewDeposit || !viewWithdraw) {
-      console.warn('[Payments] Section not found in HTML. Skipping init.');
-      return;
-    }
-
-    /* -------------------------
-       Tabs behavior
-       ------------------------- */
-    if (tabDepositBtn && tabWithdrawBtn) {
-      tabDepositBtn.addEventListener('click', () => {
-        tabDepositBtn.classList.add('bg-indigo-600','text-white');
-        tabDepositBtn.classList.remove('bg-gray-100');
-        tabWithdrawBtn.classList.remove('bg-indigo-600','text-white');
-        tabWithdrawBtn.classList.add('bg-gray-100');
-        viewDeposit.classList.remove('hidden');
-        viewWithdraw.classList.add('hidden');
-      });
-
-      tabWithdrawBtn.addEventListener('click', () => {
-        tabWithdrawBtn.classList.add('bg-indigo-600','text-white');
-        tabWithdrawBtn.classList.remove('bg-gray-100');
-        tabDepositBtn.classList.remove('bg-indigo-600','text-white');
-        tabDepositBtn.classList.add('bg-gray-100');
-        viewWithdraw.classList.remove('hidden');
-        viewDeposit.classList.add('hidden');
+    // Wait for elements helper (polling). Resolves with map of element or rejects with missing list.
+    function waitForElements(ids, timeoutMs = 6000, intervalMs = 100) {
+      return new Promise((resolve, reject) => {
+        const deadline = Date.now() + timeoutMs;
+        let poll = setInterval(() => {
+          const found = {};
+          const missing = [];
+          ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) found[id] = el;
+            else missing.push(id);
+          });
+          if (missing.length === 0) {
+            clearInterval(poll);
+            resolve(found);
+          } else if (Date.now() > deadline) {
+            clearInterval(poll);
+            reject({ missing });
+          }
+        }, intervalMs);
       });
     }
 
-    /* -------------------------
-       Helpers
-       ------------------------- */
-    function formatDate(ts) {
-      if (!ts) return '';
-      try {
-        const d = (ts.toDate) ? ts.toDate() : new Date(ts);
-        return d.toLocaleString();
-      } catch (e) {
-        return String(ts);
+    // call wait-for-elements then init module or log missing
+    waitForElements(requiredIds, 7000, 120).then(els => {
+      console.log('[Payments] All required DOM elements found. Initializing module.');
+
+      // assign elements (use short names used in your code)
+      const tabDepositBtn = els['payments-tab-deposit'];
+      const tabWithdrawBtn = els['payments-tab-withdraw'];
+      const viewDeposit = els['payments-view-deposit'];
+      const viewWithdraw = els['payments-view-withdraw'];
+
+      const elDepositsToday = els['p-deposits-today'];
+      const elDepositsYesterday = els['p-deposits-yesterday'];
+      const elDepositsTotal = els['p-deposits-total'];
+      const tbodyDeposits = els['p-deposits-tbody'];
+
+      const elWithdrawProcessing = els['p-withdraw-processing'];
+      const elWithdrawSuccess = els['p-withdraw-success'];
+      const elWithdrawRejected = els['p-withdraw-rejected'];
+      const tbodyWithdraws = els['p-withdraw-tbody'];
+      const withdrawFilter = els['p-withdraw-filter'];
+
+      // small helpers (same as before)
+      function formatDate(ts) {
+        if (!ts) return '';
+        try { const d = (ts.toDate) ? ts.toDate() : new Date(ts); return d.toLocaleString(); }
+        catch (e) { return String(ts); }
       }
-    }
-    function money(n) { return "₦" + Number(n || 0).toLocaleString(); }
-    function isSameDay(a,b) {
-      return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-    }
-    function subDays(date, n) { const x = new Date(date); x.setDate(x.getDate()-n); return x; }
+      function money(n) { return "₦" + Number(n || 0).toLocaleString(); }
+      function isSameDay(a,b) { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+      function subDays(date, n) { const x = new Date(date); x.setDate(x.getDate()-n); return x; }
 
-    /* -------------------------
-       Deposits: realtime listener
-       ------------------------- */
-    if (tbodyDeposits) {
-      db.collection('Deposit').orderBy('createdAt','desc').onSnapshot(snap => {
-        const deposits = [];
-        snap.forEach(d => deposits.push({ id: d.id, ...d.data() }));
+      /* -------------------------
+         Tabs behavior (defensive)
+         ------------------------- */
+      if (tabDepositBtn && tabWithdrawBtn && viewDeposit && viewWithdraw) {
+        tabDepositBtn.addEventListener('click', () => {
+          tabDepositBtn.classList.add('bg-indigo-600','text-white'); tabDepositBtn.classList.remove('bg-gray-100');
+          tabWithdrawBtn.classList.remove('bg-indigo-600','text-white'); tabWithdrawBtn.classList.add('bg-gray-100');
+          viewDeposit.classList.remove('hidden'); viewWithdraw.classList.add('hidden');
+        });
+        tabWithdrawBtn.addEventListener('click', () => {
+          tabWithdrawBtn.classList.add('bg-indigo-600','text-white'); tabWithdrawBtn.classList.remove('bg-gray-100');
+          tabDepositBtn.classList.remove('bg-indigo-600','text-white'); tabDepositBtn.classList.add('bg-gray-100');
+          viewWithdraw.classList.remove('hidden'); viewDeposit.classList.add('hidden');
+        });
+      }
 
-        // totals
-        const now = new Date();
-        const todayCount = deposits.filter(d => {
-          const dt = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
-          return isSameDay(dt, now);
-        }).length;
-        const yesterdayCount = deposits.filter(d => {
-          const dt = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
-          return isSameDay(dt, subDays(now,1));
-        }).length;
+      /* -------------------------
+         Deposits (realtime)
+         ------------------------- */
+      if (tbodyDeposits) {
+        db.collection('Deposit').orderBy('createdAt','desc').onSnapshot(snap => {
+          const deposits = [];
+          snap.forEach(d => deposits.push({ id: d.id, ...d.data() }));
 
-        if (elDepositsToday) elDepositsToday.textContent = todayCount;
-        if (elDepositsYesterday) elDepositsYesterday.textContent = yesterdayCount;
-        if (elDepositsTotal) elDepositsTotal.textContent = deposits.length;
+          const now = new Date();
+          const todayCount = deposits.filter(d => {
+            const dt = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+            return isSameDay(dt, now);
+          }).length;
+          const yesterdayCount = deposits.filter(d => {
+            const dt = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+            return isSameDay(dt, subDays(now,1));
+          }).length;
 
-        // render list
-        tbodyDeposits.innerHTML = '';
-        deposits.forEach(d => {
+          if (elDepositsToday) elDepositsToday.textContent = todayCount;
+          if (elDepositsYesterday) elDepositsYesterday.textContent = yesterdayCount;
+          if (elDepositsTotal) elDepositsTotal.textContent = deposits.length;
+
+          // render rows safely
+          tbodyDeposits.innerHTML = '';
+          deposits.forEach(d => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-t';
+            tr.innerHTML = `
+              <td class="py-3">${d.username || ''}</td>
+              <td>${d.userId || ''}</td>
+              <td>${money(d.amount)}</td>
+              <td>${d.reference || ''}</td>
+              <td>${formatDate(d.createdAt)}</td>
+              <td><span class="text-xs font-semibold ${d.status==='successful' ? 'text-green-700' : 'text-yellow-600'}">${d.status || ''}</span></td>
+            `;
+            tbodyDeposits.appendChild(tr);
+          });
+        }, err => console.error('[Payments] Deposit listener error', err));
+      } else {
+        console.warn('[Payments] tbodyDeposits not found - deposit table will not render.');
+      }
+
+      /* -------------------------
+         Withdraws (realtime + filter)
+         ------------------------- */
+      function fetchAndRenderWithdraws() {
+        if (!tbodyWithdraws) {
+          console.warn('[Payments] tbodyWithdraws missing - skip fetch.');
+          return;
+        }
+        db.collection('Withdraw').orderBy('timestamp','desc').get().then(qs => {
+          const arr = [];
+          qs.forEach(d => arr.push({ id: d.id, ...d.data() }));
+          renderWithdraws(arr);
+          if (elWithdrawProcessing) elWithdrawProcessing.textContent = arr.filter(x => x.status === 'processing').length;
+          if (elWithdrawSuccess) elWithdrawSuccess.textContent = arr.filter(x => x.status === 'successful').length;
+          if (elWithdrawRejected) elWithdrawRejected.textContent = arr.filter(x => x.status === 'rejected').length;
+        }).catch(err => console.error('[Payments] fetch withdraws err', err));
+      }
+
+      if (tbodyWithdraws) {
+        db.collection('Withdraw').orderBy('timestamp','desc').onSnapshot(snap => {
+          const list = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          renderWithdraws(list);
+          if (elWithdrawProcessing) elWithdrawProcessing.textContent = list.filter(x => x.status === 'processing').length;
+          if (elWithdrawSuccess) elWithdrawSuccess.textContent = list.filter(x => x.status === 'successful').length;
+          if (elWithdrawRejected) elWithdrawRejected.textContent = list.filter(x => x.status === 'rejected').length;
+        }, err => console.error('[Payments] Withdraw onSnapshot err', err));
+
+        if (withdrawFilter) withdrawFilter.addEventListener('change', fetchAndRenderWithdraws);
+      } else {
+        console.warn('[Payments] tbodyWithdraws not found - withdraw table will not render.');
+      }
+
+      function renderWithdraws(withdraws) {
+        if (!tbodyWithdraws) return;
+        let rows = withdraws;
+        const f = withdrawFilter ? withdrawFilter.value || 'processing' : 'processing';
+        if (f === 'processing') rows = withdraws.filter(w => w.status === 'processing');
+        if (f === 'completed') rows = withdraws.filter(w => w.status === 'successful' || w.status === 'rejected');
+
+        tbodyWithdraws.innerHTML = '';
+        rows.forEach(w => {
           const tr = document.createElement('tr');
           tr.className = 'border-t';
-          tr.innerHTML = `
-            <td class="py-3">${d.username || ''}</td>
-            <td>${d.userId || ''}</td>
-            <td>${money(d.amount)}</td>
-            <td>${d.reference || ''}</td>
-            <td>${formatDate(d.createdAt)}</td>
-            <td><span class="text-xs font-semibold ${d.status==='successful' ? 'text-green-700' : 'text-yellow-600'}">${d.status || ''}</span></td>
-          `;
-          tbodyDeposits.appendChild(tr);
+
+          const userIdTd = document.createElement('td'); userIdTd.className = 'py-2'; userIdTd.textContent = w.userId || '';
+          const accNameTd = document.createElement('td'); accNameTd.textContent = w.account_name || '';
+          const accNoTd = document.createElement('td'); accNoTd.textContent = w.accNum || '';
+          const bankTd = document.createElement('td'); bankTd.textContent = w.bankName || '';
+          const amountTd = document.createElement('td'); amountTd.textContent = money(w.amount);
+          const dateTd = document.createElement('td'); dateTd.textContent = formatDate(w.timestamp);
+          const statusTd = document.createElement('td');
+          statusTd.innerHTML = `<span class="text-xs font-semibold ${w.status==='processing' ? 'text-yellow-600' : w.status==='successful' ? 'text-green-700' : 'text-red-700'}">${w.status}</span>`;
+
+          const actionTd = document.createElement('td');
+          if (w.status === 'processing') {
+            const okBtn = document.createElement('button');
+            okBtn.className = 'px-3 py-1 bg-green-100 text-green-700 rounded mr-2 text-xs';
+            okBtn.textContent = 'Mark Successful';
+            okBtn.addEventListener('click', () => onMarkSuccessful(w));
+
+            const rejBtn = document.createElement('button');
+            rejBtn.className = 'px-3 py-1 bg-red-100 text-red-700 rounded text-xs';
+            rejBtn.textContent = 'Mark Rejected';
+            rejBtn.addEventListener('click', () => onMarkRejected(w));
+
+            actionTd.appendChild(okBtn); actionTd.appendChild(rejBtn);
+          } else {
+            const span = document.createElement('span');
+            span.className = 'px-2 py-1 text-xs font-semibold ' + (w.status === 'successful' ? 'text-green-700' : 'text-red-700');
+            span.textContent = w.status;
+            actionTd.appendChild(span);
+          }
+
+          tr.append(userIdTd, accNameTd, accNoTd, bankTd, amountTd, dateTd, statusTd, actionTd);
+          tbodyWithdraws.appendChild(tr);
         });
-      }, err => console.error('Deposit listener error', err));
-    }
+      }
 
-    /* -------------------------
-       Withdraws: realtime + filter
-       ------------------------- */
-    function fetchAndRenderWithdraws() {
-      if (!tbodyWithdraws) return;
-      db.collection('Withdraw').orderBy('timestamp','desc').get().then(qs => {
-        const arr = [];
-        qs.forEach(d => arr.push({ id: d.id, ...d.data() }));
-        renderWithdraws(arr);
-        if (elWithdrawProcessing) elWithdrawProcessing.textContent = arr.filter(x => x.status === 'processing').length;
-        if (elWithdrawSuccess) elWithdrawSuccess.textContent = arr.filter(x => x.status === 'successful').length;
-        if (elWithdrawRejected) elWithdrawRejected.textContent = arr.filter(x => x.status === 'rejected').length;
-      }).catch(err => console.error('fetch withdraws err', err));
-    }
-
-    if (tbodyWithdraws) {
-      db.collection('Withdraw').orderBy('timestamp','desc').onSnapshot(snap => {
-        const list = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-        renderWithdraws(list);
-        if (elWithdrawProcessing) elWithdrawProcessing.textContent = list.filter(x => x.status === 'processing').length;
-        if (elWithdrawSuccess) elWithdrawSuccess.textContent = list.filter(x => x.status === 'successful').length;
-        if (elWithdrawRejected) elWithdrawRejected.textContent = list.filter(x => x.status === 'rejected').length;
-      }, err => console.error('Withdraw onSnapshot err', err));
-
-      if (withdrawFilter) withdrawFilter.addEventListener('change', fetchAndRenderWithdraws);
-    }
-
-    function renderWithdraws(withdraws) {
-      if (!tbodyWithdraws) return;
-      let rows = withdraws;
-      const f = withdrawFilter ? withdrawFilter.value || 'processing' : 'processing';
-      if (f === 'processing') rows = withdraws.filter(w => w.status === 'processing');
-      if (f === 'completed') rows = withdraws.filter(w => w.status === 'successful' || w.status === 'rejected');
-
-      tbodyWithdraws.innerHTML = '';
-      rows.forEach(w => {
-        const tr = document.createElement('tr');
-        tr.className = 'border-t';
-        const userIdTd = document.createElement('td'); userIdTd.className = 'py-2'; userIdTd.textContent = w.userId || '';
-        const accNameTd = document.createElement('td'); accNameTd.textContent = w.account_name || '';
-        const accNoTd = document.createElement('td'); accNoTd.textContent = w.accNum || '';
-        const bankTd = document.createElement('td'); bankTd.textContent = w.bankName || '';
-        const amountTd = document.createElement('td'); amountTd.textContent = money(w.amount);
-        const dateTd = document.createElement('td'); dateTd.textContent = formatDate(w.timestamp);
-        const statusTd = document.createElement('td');
-        statusTd.innerHTML = `<span class="text-xs font-semibold ${w.status==='processing' ? 'text-yellow-600' : w.status==='successful' ? 'text-green-700' : 'text-red-700'}">${w.status}</span>`;
-
-        const actionTd = document.createElement('td');
-        if (w.status === 'processing') {
-          const okBtn = document.createElement('button');
-          okBtn.className = 'px-3 py-1 bg-green-100 text-green-700 rounded mr-2 text-xs';
-          okBtn.textContent = 'Mark Successful';
-          okBtn.addEventListener('click', () => onMarkSuccessful(w));
-
-          const rejBtn = document.createElement('button');
-          rejBtn.className = 'px-3 py-1 bg-red-100 text-red-700 rounded text-xs';
-          rejBtn.textContent = 'Mark Rejected';
-          rejBtn.addEventListener('click', () => onMarkRejected(w));
-
-          actionTd.appendChild(okBtn); 
-          actionTd.appendChild(rejBtn);
-        } else {
-          const span = document.createElement('span');
-          span.className = 'px-2 py-1 text-xs font-semibold ' + (w.status === 'successful' ? 'text-green-700' : 'text-red-700');
-          span.textContent = w.status;
-          actionTd.appendChild(span);
-        }
-
-        tr.append(userIdTd, accNameTd, accNoTd, bankTd, amountTd, dateTd, statusTd, actionTd);
-        tbodyWithdraws.appendChild(tr);
-      });
-    }
-
-    /* -------------------------
-       Action flows
-       ------------------------- */
-    async function findAndUpdateRelatedTransactions(withdrawDoc, status) {
-      try {
-        if (withdrawDoc.transactionId) {
-          await db.collection('Transaction').doc(withdrawDoc.transactionId).update({ status });
+      /* -------------------------
+         Action flows
+         ------------------------- */
+      async function findAndUpdateRelatedTransactions(withdrawDoc, status) {
+        try {
+          if (withdrawDoc.transactionId) {
+            await db.collection('Transaction').doc(withdrawDoc.transactionId).update({ status });
+            return true;
+          }
+          const qSnap = await db.collection('Transaction')
+            .where('userId','==', withdrawDoc.userId || '')
+            .where('type','==','Withdraw')
+            .get();
+          const ops = [];
+          qSnap.forEach(docSnap => {
+            const tx = { id: docSnap.id, ...docSnap.data() };
+            let ok = false;
+            if (Number(tx.amount) === Number(withdrawDoc.amount)) ok = true;
+            if (tx.status === 'processing') ok = true;
+            if (ok) ops.push(db.collection('Transaction').doc(docSnap.id).update({ status }).catch(e => console.error('[Payments] tx update err', e)));
+          });
+          await Promise.all(ops);
           return true;
+        } catch (err) {
+          console.error('[Payments] findAndUpdateRelatedTransactions err', err);
+          return false;
         }
-        const qSnap = await db.collection('Transaction')
-          .where('userId','==', withdrawDoc.userId || '')
-          .where('type','==','Withdraw')
-          .get();
-        const ops = [];
-        qSnap.forEach(docSnap => {
-          const tx = { id: docSnap.id, ...docSnap.data() };
-          let ok = false;
-          if (Number(tx.amount) === Number(withdrawDoc.amount)) ok = true;
-          if (tx.status === 'processing') ok = true;
-          if (ok) ops.push(db.collection('Transaction').doc(docSnap.id).update({ status }).catch(e => console.error('tx update err', e)));
-        });
-        await Promise.all(ops);
-        return true;
-      } catch (err) {
-        console.error('findAndUpdateRelatedTransactions err', err);
-        return false;
       }
-    }
 
-    async function onMarkSuccessful(withdrawDoc) {
-      if (!confirm('Mark this withdrawal as SUCCESSFUL?')) return;
-      try {
-        await db.collection('Withdraw').doc(withdrawDoc.id).update({ status: 'successful' });
-        await findAndUpdateRelatedTransactions(withdrawDoc, 'successful');
-        alert('Withdrawal marked successful.');
-      } catch (err) {
-        console.error('mark successful err', err);
-        alert('Failed to mark successful: ' + (err.message || err));
+      async function onMarkSuccessful(withdrawDoc) {
+        if (!confirm('Mark this withdrawal as SUCCESSFUL?')) return;
+        try {
+          await db.collection('Withdraw').doc(withdrawDoc.id).update({ status: 'successful' });
+          await findAndUpdateRelatedTransactions(withdrawDoc, 'successful');
+          alert('Withdrawal marked successful.');
+        } catch (err) {
+          console.error('[Payments] mark successful err', err);
+          alert('Failed to mark successful: ' + (err.message || err));
+        }
       }
-    }
 
-    async function onMarkRejected(withdrawDoc) {
-      if (!confirm('Mark this withdrawal as REJECTED and refund the user?')) return;
-      const userId = withdrawDoc.userId;
-      const amount = Number(withdrawDoc.amount || 0);
-      if (!userId) {
-        alert('Withdraw doc missing userId — cannot refund automatically.');
-        return;
+      async function onMarkRejected(withdrawDoc) {
+        if (!confirm('Mark this withdrawal as REJECTED and refund the user?')) return;
+        const userId = withdrawDoc.userId;
+        const amount = Number(withdrawDoc.amount || 0);
+        if (!userId) {
+          alert('Withdraw doc missing userId — cannot refund automatically.');
+          return;
+        }
+        try {
+          await db.collection('Withdraw').doc(withdrawDoc.id).update({ status: 'rejected' });
+          await findAndUpdateRelatedTransactions(withdrawDoc, 'rejected');
+          await db.collection('users').doc(userId).update({
+            walletBalance: firebase.firestore.FieldValue.increment(amount)
+          });
+          alert('Withdrawal rejected and wallet credited.');
+        } catch (err) {
+          console.error('[Payments] reject withdraw err', err);
+          alert('Failed to reject withdrawal: ' + (err.message || err));
+        }
       }
-      try {
-        await db.collection('Withdraw').doc(withdrawDoc.id).update({ status: 'rejected' });
-        await findAndUpdateRelatedTransactions(withdrawDoc, 'rejected');
-        await db.collection('users').doc(userId).update({
-          walletBalance: firebase.firestore.FieldValue.increment(amount)
-        });
-        alert('Withdrawal rejected and wallet credited.');
-      } catch (err) {
-        console.error('reject withdraw err', err);
-        alert('Failed to reject withdrawal: ' + (err.message || err));
-      }
-    }
 
-    /* -------------------------
-       Initial fetch
-       ------------------------- */
-    fetchAndRenderWithdraws();
+      // initial fetch
+      fetchAndRenderWithdraws();
+
+    }).catch(err => {
+      console.error('[Payments] Required DOM elements missing after wait: ', err && err.missing ? err.missing : err);
+      // Helpful console trace for debugging: list which IDs exist and which don't
+      const statusReport = requiredIds.map(id => ({ id, found: !!document.getElementById(id) }));
+      console.table(statusReport);
+    });
   })();
 });
-
-
 
 
 
@@ -3307,6 +3326,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -3270,7 +3270,7 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchStats();
   startUsersModule();
   fetchPendingJobsForAdmin();
-  loadWithdrawals();
+  
   loadTaskSubmissions();
 
   // 📲 Default Airtime → Pending live listener
@@ -3283,6 +3283,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

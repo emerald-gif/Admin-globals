@@ -375,16 +375,13 @@ async function fetchStats() {
 // Load All Submitted Jobs
 async function fetchPendingJobsForAdmin() {
   const pendingContainer = document.getElementById("adminPendingJobs");
-  pendingContainer.innerHTML = "<p>Loading pending jobs...</p>";
+  pendingContainer.innerHTML = "<p class='text-gray-500'>Loading pending jobs...</p>";
 
   try {
     const pendingJobs = [];
 
     // Fetch pending tasks
-    const taskSnap = await db.collection("tasks")
-      .where("status", "==", "on review")
-      .get();
-
+    const taskSnap = await db.collection("tasks").where("status", "==", "on review").get();
     taskSnap.forEach(doc => {
       const data = doc.data();
       data.id = doc.id;
@@ -393,10 +390,7 @@ async function fetchPendingJobsForAdmin() {
     });
 
     // Fetch pending affiliate jobs
-    const affiliateSnap = await db.collection("affiliateJobs")
-      .where("status", "==", "on review")
-      .get();
-
+    const affiliateSnap = await db.collection("affiliateJobs").where("status", "==", "on review").get();
     affiliateSnap.forEach(doc => {
       const data = doc.data();
       data.id = doc.id;
@@ -406,68 +400,123 @@ async function fetchPendingJobsForAdmin() {
 
     // Render jobs
     if (pendingJobs.length === 0) {
-      pendingContainer.innerHTML = "<p>No jobs pending review.</p>";
+      pendingContainer.innerHTML = "<p class='text-gray-500'>No jobs pending review.</p>";
       return;
     }
 
     pendingContainer.innerHTML = "";
     pendingJobs.forEach(job => {
       const card = `
-  <div class="p-4 border shadow rounded-lg bg-white mb-4">
-    <h3 class="text-lg font-semibold">${job.title}</h3>
-    <p><strong>Type:</strong> ${job.type}</p>
-    <p><strong>Posted by:</strong> ${job.postedBy?.name || "Unknown"}</p>
-    <p><strong>Total:</strong> ₦${job.total}</p>
-    <p><strong>Status:</strong> ${job.status}</p>
-    <div class="mt-4 flex gap-2">
-      <button onclick="approveJob('${job.id}', '${job.type}')" class="bg-green-600 text-white px-4 py-1 rounded">Approve</button>
-      <button onclick="rejectJob('${job.id}', '${job.type}')" class="bg-red-600 text-white px-4 py-1 rounded">Reject</button>
-    </div>
-  </div>
-`;
+        <div class="p-4 border border-gray-200 shadow-sm rounded-2xl bg-white hover:shadow-md transition">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800">${job.title}</h3>
+            <span class="px-2 py-1 text-xs rounded-full ${job.type === 'task' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}">
+              ${job.type}
+            </span>
+          </div>
+          <p class="mt-2 text-gray-600"><strong>By:</strong> ${job.postedBy?.name || "Unknown"}</p>
+          <p class="text-gray-600"><strong>Total:</strong> ₦${Number(job.total).toLocaleString()}</p>
+          <p class="text-gray-500 text-sm mt-1">Status: ${job.status}</p>
+          <div class="mt-4 flex gap-2">
+            <button onclick="openJobModal('${job.id}', '${job.type}')" class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700">
+              View Details
+            </button>
+            <button onclick="approveJob('${job.id}', '${job.type}')" class="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">
+              Approve
+            </button>
+            <button onclick="rejectJob('${job.id}', '${job.type}')" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700">
+              Reject
+            </button>
+          </div>
+        </div>
+      `;
       pendingContainer.innerHTML += card;
     });
 
   } catch (error) {
     console.error("🔥 Error loading pending jobs:", error);
-    pendingContainer.innerHTML = "<p>Error loading jobs.</p>";
+    pendingContainer.innerHTML = "<p class='text-red-600'>Error loading jobs.</p>";
   }
 }
 
-
-
-
-
-
+// ---------- APPROVE ----------
 function approveJob(jobId, jobType) {
   const collectionName = jobType === "affiliate" ? "affiliateJobs" : "tasks";
-
   firebase.firestore().collection(collectionName).doc(jobId).update({
     status: 'approved'
   }).then(() => {
     alert('✅ Job approved successfully');
-    fetchPendingJobsForAdmin(); // Refresh the UI
+    closeJobModal();
+    fetchPendingJobsForAdmin();
   }).catch((error) => {
     console.error('❌ Error approving job:', error);
     alert("Error approving job: " + error.message);
   });
 }
 
-
-
-
+// ---------- REJECT ----------
 async function rejectJob(jobId, jobType) {
   const collectionName = jobType === "affiliate" ? "affiliateJobs" : "tasks";
   try {
-    await db.collection(collectionName).doc(jobId).update({
-      status: "rejected"
-    });
+    await db.collection(collectionName).doc(jobId).update({ status: "rejected" });
     alert("🚫 Job rejected.");
-    fetchPendingJobsForAdmin(); // Refresh the list
+    closeJobModal();
+    fetchPendingJobsForAdmin();
   } catch (err) {
     console.error("Error rejecting job:", err);
     alert("❌ Failed to reject job.");
   }
+}
+
+// ---------- MODAL ----------
+async function openJobModal(jobId, jobType) {
+  const modal = document.getElementById("jobDetailsModal");
+  const content = document.getElementById("jobDetailsContent");
+  const approveBtn = document.getElementById("approveBtnModal");
+  const rejectBtn = document.getElementById("rejectBtnModal");
+
+  const collectionName = jobType === "affiliate" ? "affiliateJobs" : "tasks";
+  const docSnap = await db.collection(collectionName).doc(jobId).get();
+  const job = docSnap.data();
+
+  if (!job) return alert("Job not found.");
+
+  let html = "";
+  if (jobType === "task") {
+    html = `
+      <p><strong>Title:</strong> ${job.title}</p>
+      <p><strong>Category:</strong> ${job.category} / ${job.subCategory}</p>
+      <p><strong>Description:</strong> ${job.description}</p>
+      <p><strong>Workers:</strong> ${job.numWorkers}</p>
+      <p><strong>Worker Earn:</strong> ₦${job.workerEarn}</p>
+      <p><strong>Total:</strong> ₦${job.total}</p>
+      ${job.screenshotURL ? `<img src="${job.screenshotURL}" class="w-full mt-2 rounded-lg">` : ""}
+      <p class="mt-2"><strong>Proof:</strong> ${job.proof || "—"}</p>
+    `;
+  } else {
+    html = `
+      <p><strong>Title:</strong> ${job.title}</p>
+      <p><strong>Category:</strong> ${job.category}</p>
+      <p><strong>Instructions:</strong> ${job.instructions}</p>
+      <p><strong>Target Link:</strong> <a href="${job.targetLink}" target="_blank" class="text-blue-600 underline">${job.targetLink}</a></p>
+      <p><strong>Workers:</strong> ${job.numWorkers}</p>
+      <p><strong>Worker Pay:</strong> ₦${job.workerPay}</p>
+      <p><strong>Total:</strong> ₦${job.total}</p>
+      ${job.campaignLogoURL ? `<img src="${job.campaignLogoURL}" class="w-full mt-2 rounded-lg">` : ""}
+      <p class="mt-2"><strong>Proof Required:</strong> ${job.proofRequired}</p>
+    `;
+  }
+
+  content.innerHTML = html;
+  modal.classList.remove("hidden");
+
+  // Attach buttons
+  approveBtn.onclick = () => approveJob(jobId, jobType);
+  rejectBtn.onclick = () => rejectJob(jobId, jobType);
+}
+
+function closeJobModal() {
+  document.getElementById("jobDetailsModal").classList.add("hidden");
 }
 
 
@@ -3136,6 +3185,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

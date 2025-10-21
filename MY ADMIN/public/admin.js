@@ -2439,31 +2439,6 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
-// --- Load Withdrawals ---
-async function loadWithdrawals() {
-  const snap = await db.collection('withdrawals').get();
-  const list = document.getElementById('withdrawal-list');
-  list.innerHTML = '';
-
-  snap.forEach(doc => {
-    const data = doc.data();
-    const div = document.createElement('div');
-    div.className = "bg-white p-4 rounded-lg shadow-sm border";
-    div.innerHTML = `
-      <p><strong>User:</strong> ${data.userId || "N/A"}</p>
-      <p><strong>Amount:</strong> ₦${data.amount || "0"}</p>
-      <p><strong>Status:</strong> 
-        <span class="${data.status === 'Approved' ? 'text-green-600' : 'text-red-600'}">
-          ${data.status || "Pending"}
-        </span>
-      </p>
-    `;
-    list.appendChild(div);
-  });
-}
-
-  
-
 
 
 
@@ -3308,6 +3283,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

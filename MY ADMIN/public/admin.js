@@ -372,7 +372,6 @@ async function fetchStats() {
 
 
 
-// --- Keep your original function intact. We'll call it for "All" tab.
 async function fetchPendingJobsForAdmin() {
   const pendingContainer = document.getElementById("adminPendingJobs");
   pendingContainer.innerHTML = "<p class='text-gray-500'>Loading pending jobs...</p>";
@@ -444,6 +443,15 @@ function renderJobCard(job) {
 
 /* ---------- Escape helper to avoid injection when inserting strings into HTML ---------- */
 
+function escapeHtml(str){
+  if (str == null) return "";
+  return String(str)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
 
 /* ---------- Focused fetch: Tasks (pending + history) ---------- */
 async function fetchTasksPanel() {
@@ -3320,6 +3328,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -44,8 +44,13 @@
           <i data-lucide="file-check" class="w-5 h-5"></i> Post Admin Job
         </button>
 
-        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('payments-panel')">
-          <i data-lucide="banknote" class="w-5 h-5"></i> PAYMENT RECORD
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('withdrawals-panel')">
+          <i data-lucide="banknote" class="w-5 h-5"></i> WITHDRAWAL RECORD
+        </button>
+
+
+        <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('deposits-panel')">
+          <i data-lucide="banknote" class="w-5 h-5"></i> DEPOSIT RECORD
         </button>
 
         <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('adminNotificationSender')">
@@ -296,111 +301,111 @@
 
 
 
-      
-      <!-- ===== PAYMENTS SECTION (Paste into dashboard.html) ===== -->
-<section id="payments-panel" class="mt-8 bg-white p-6 rounded-2xl shadow">
+<!-- ===== DEPOSITS SECTION ===== -->
+<section id="deposits-panel" class="mt-8 bg-white p-6 rounded-2xl shadow">
   <div class="flex items-center justify-between mb-4">
-    <h3 class="text-lg font-semibold">Payments</h3>
-    <div class="flex gap-2">
-      <button id="payments-tab-deposit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm">Deposits</button>
-      <button id="payments-tab-withdraw" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm">Withdrawals</button>
+    <h3 class="text-lg font-semibold">Deposit Records</h3>
+  </div>
+
+  <div class="grid grid-cols-3 gap-4 mb-4">
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <div class="text-xs text-gray-500">Deposits Today</div>
+      <div id="p-deposits-today" class="text-2xl font-bold">0</div>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <div class="text-xs text-gray-500">Deposits Yesterday</div>
+      <div id="p-deposits-yesterday" class="text-2xl font-bold">0</div>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <div class="text-xs text-gray-500">Total Deposits</div>
+      <div id="p-deposits-total" class="text-2xl font-bold">0</div>
     </div>
   </div>
 
-  <!-- DEPOSIT VIEW -->
-  <div id="payments-view-deposit" class="">
-    <div class="grid grid-cols-3 gap-4 mb-4">
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <div class="text-xs text-gray-500">Deposits Today</div>
-        <div id="p-deposits-today" class="text-2xl font-bold">0</div>
-      </div>
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <div class="text-xs text-gray-500">Deposits Yesterday</div>
-        <div id="p-deposits-yesterday" class="text-2xl font-bold">0</div>
-      </div>
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <div class="text-xs text-gray-500">Total Deposits</div>
-        <div id="p-deposits-total" class="text-2xl font-bold">0</div>
-      </div>
-    </div>
-
-    <div class="bg-white p-4 rounded-lg shadow">
-      <h4 class="font-semibold mb-3">Recent Deposits</h4>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm" id="p-deposits-table">
-          <thead class="text-xs text-gray-500">
-            <tr>
-              <th class="py-2 text-left">Username</th>
-              <th class="text-left">User ID</th>
-              <th class="text-left">Amount</th>
-              <th class="text-left">Reference</th>
-              <th class="text-left">Date</th>
-              <th class="text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody id="p-deposits-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- WITHDRAW VIEW -->
-  <div id="payments-view-withdraw" class="hidden">
-    <div class="grid grid-cols-3 gap-4 mb-4">
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <div class="text-xs text-gray-500">Processing</div>
-        <div id="p-withdraw-processing" class="text-2xl font-bold">0</div>
-      </div>
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <div class="text-xs text-gray-500">Successful</div>
-        <div id="p-withdraw-success" class="text-2xl font-bold">0</div>
-      </div>
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <div class="text-xs text-gray-500">Rejected</div>
-        <div id="p-withdraw-rejected" class="text-2xl font-bold">0</div>
-      </div>
-    </div>
-
-    <div class="bg-white p-4 rounded-lg shadow">
-      <div class="flex items-center justify-between mb-3">
-        <h4 class="font-semibold">Withdrawals</h4>
-        <div class="flex items-center gap-2">
-          <label class="text-sm text-gray-500">Show</label>
-          <select id="p-withdraw-filter" class="border px-2 py-1 rounded text-sm">
-            <option value="processing">Processing</option>
-            <option value="all">All</option>
-            <option value="completed">Completed</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm" id="p-withdraw-table">
-          <thead class="text-xs text-gray-500">
-            <tr>
-              <th class="py-2 text-left">User ID</th>
-              <th class="text-left">Account Name</th>
-              <th class="text-left">Acc No</th>
-              <th class="text-left">Bank</th>
-              <th class="text-left">Amount</th>
-              <th class="text-left">Date</th>
-              <th class="text-left">Status</th>
-              <th class="text-left">Action</th>
-            </tr>
-          </thead>
-          <tbody id="p-withdraw-tbody"></tbody>
-        </table>
-      </div>
+  <div class="bg-white p-4 rounded-lg shadow">
+    <h4 class="font-semibold mb-3">Recent Deposits</h4>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-gray-500">
+          <tr>
+            <th class="py-2 text-left">Username</th>
+            <th class="text-left">User ID</th>
+            <th class="text-left">Amount</th>
+            <th class="text-left">Reference</th>
+            <th class="text-left">Date</th>
+            <th class="text-left">Status</th>
+          </tr>
+        </thead>
+        <tbody id="p-deposits-tbody">
+          <tr><td colspan="6" class="py-3 text-center text-gray-400 text-sm">Loading...</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </section>
-<!-- ===== END PAYMENTS SECTION ===== -->
+<!-- ===== END DEPOSITS SECTION ===== -->
 
 
 
 
 
 
+<!-- ===== WITHDRAWALS SECTION ===== -->
+<section id="withdrawals-panel" class="mt-8 bg-white p-6 rounded-2xl shadow">
+  <div class="flex items-center justify-between mb-4">
+    <h3 class="text-lg font-semibold">Withdrawals</h3>
+    <div class="flex items-center gap-2">
+      <label class="text-sm text-gray-500">Show</label>
+      <select id="p-withdraw-filter" class="border px-2 py-1 rounded text-sm">
+        <option value="processing">Processing</option>
+        <option value="completed">Completed</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-3 gap-4 mb-4">
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <div class="text-xs text-gray-500">Processing</div>
+      <div id="p-withdraw-processing" class="text-2xl font-bold">0</div>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <div class="text-xs text-gray-500">Successful</div>
+      <div id="p-withdraw-success" class="text-2xl font-bold">0</div>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <div class="text-xs text-gray-500">Rejected</div>
+      <div id="p-withdraw-rejected" class="text-2xl font-bold">0</div>
+    </div>
+  </div>
+
+  <div class="bg-white p-4 rounded-lg shadow">
+    <h4 class="font-semibold mb-3">Withdraw Requests</h4>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-gray-500">
+          <tr>
+            <th class="py-2 text-left">User ID</th>
+            <th class="text-left">Account Name</th>
+            <th class="text-left">Acc No</th>
+            <th class="text-left">Bank</th>
+            <th class="text-left">Amount</th>
+            <th class="text-left">Date</th>
+            <th class="text-left">Status</th>
+            <th class="text-left">Action</th>
+          </tr>
+        </thead>
+        <tbody id="p-withdraw-tbody">
+          <tr><td colspan="8" class="py-3 text-center text-gray-400 text-sm">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<!-- ===== END WITHDRAWALS SECTION ===== -->
+
+
+      
 
 
 
@@ -1667,6 +1672,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

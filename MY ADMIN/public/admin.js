@@ -2975,11 +2975,10 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
-/* ===== ROBUST WITHDRAWALS MODULE (paste into main.js) ===== */
+/* ===== WITHDRAWALS MODULE (using createdAt) ===== */
 (function () {
   'use strict';
 
-  // small helper: wait until an element with id exists (poll)
   function waitForId(id, timeout = 7000, interval = 100) {
     return new Promise((resolve, reject) => {
       const deadline = Date.now() + timeout;
@@ -2992,7 +2991,6 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
     });
   }
 
-  // Start only when the tbody is present (guarantees HTML exists)
   waitForId('p-withdraw-tbody', 8000, 100).then(async (tbodyEl) => {
     console.log('[Payments] withdraw tbody found, initializing withdrawals module...');
 
@@ -3002,18 +3000,15 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
     }
     const db = firebase.firestore();
 
-    // Defensive DOM lookup for optional items (they might be missing but module will still work)
     const elProc = document.getElementById('p-withdraw-processing');
     const elSucc = document.getElementById('p-withdraw-success');
     const elRej = document.getElementById('p-withdraw-rejected');
-    const filterSel = document.getElementById('p-withdraw-filter'); // may be null
+    const filterSel = document.getElementById('p-withdraw-filter');
     const tbody = tbodyEl;
 
-    // small utils
     function money(n) { return "₦" + Number(n || 0).toLocaleString(); }
     function formatDate(ts) { try { if (!ts) return ''; const d = ts.toDate ? ts.toDate() : new Date(ts); return d.toLocaleString(); } catch(e) { return String(ts); } }
 
-    // safe render: wraps innerHTML usage in try/catch
     function render(withdraws) {
       try {
         const filter = (filterSel && filterSel.value) ? filterSel.value : 'processing';
@@ -3021,13 +3016,7 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
         if (filter === 'processing') filtered = withdraws.filter(x => x.status === 'processing');
         else if (filter === 'completed') filtered = withdraws.filter(x => ['successful','rejected'].includes(x.status));
 
-        // clear safely
-        if (!tbody) {
-          console.warn('[Payments] tbody missing at render time, aborting render.');
-          return;
-        }
         tbody.innerHTML = '';
-
         if (filtered.length === 0) {
           tbody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-400 text-sm">No data</td></tr>';
           return;
@@ -3036,14 +3025,13 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
         filtered.forEach(w => {
           const tr = document.createElement('tr');
           tr.className = 'border-t';
-          // Use textContent for values, but build actions as HTML because of inline onclick handlers (keeps compatibility)
           tr.innerHTML = `
             <td>${w.userId || ''}</td>
             <td>${w.account_name || ''}</td>
             <td>${w.accNum || ''}</td>
             <td>${w.bankName || ''}</td>
             <td>${money(w.amount)}</td>
-            <td>${formatDate(w.timestamp)}</td>
+            <td>${formatDate(w.createdAt)}</td>
             <td><span class="text-xs font-semibold ${w.status === 'processing' ? 'text-yellow-600' : w.status === 'successful' ? 'text-green-700' : 'text-red-700'}">${w.status}</span></td>
             <td>
               ${w.status === 'processing' ? `
@@ -3069,89 +3057,62 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
       }
     }
 
-    // Firestore realtime listener (safe)
-    const unsubscribe = db.collection('Withdraw').orderBy('timestamp','desc').onSnapshot(snap => {
-      try {
+    // 🔥 NOTE: changed 'timestamp' → 'createdAt'
+    db.collection('Withdraw')
+      .orderBy('createdAt','desc')
+      .onSnapshot((snap) => {
         const list = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        console.log('[Withdraw snapshot]', list.length, list);
         render(list);
         updateCounts(list);
-      } catch (err) {
-        console.error('[Payments] onSnapshot handler error', err);
-      }
-    }, err => {
-      console.error('[Payments] Withdraw onSnapshot error', err);
-    });
+      }, (err) => console.error('[Payments] Withdraw onSnapshot error', err));
 
-    // filter change (if select exists)
     if (filterSel) {
       filterSel.addEventListener('change', () => {
-        // quick re-query for stability
-        db.collection('Withdraw').orderBy('timestamp','desc').get().then(snap => {
+        db.collection('Withdraw').orderBy('createdAt','desc').get().then((snap) => {
           const list = [];
-          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
           render(list);
-        }).catch(err => {
-          console.error('[Payments] fetch on filter change error', err);
         });
       });
     }
 
-    // Safe action handlers attached to window to keep HTML onclicks working
+    // ✅ success & reject handlers
     window.markWithdrawSuccessSafe = async function (id, userId) {
       try {
         if (!confirm('Mark this withdrawal as SUCCESSFUL?')) return;
-        // update withdraw doc
         await db.collection('Withdraw').doc(id).update({ status: 'successful' });
-        // attempt transaction update (best-effort)
         try { await db.collection('Transaction').doc(id).update({ status: 'successful' }); } catch(e){ /* ignore */ }
         alert('Withdrawal marked successful.');
       } catch (err) {
         console.error('[Payments] mark success error', err);
-        alert('Failed to mark successful: ' + (err && err.message ? err.message : err));
+        alert('Failed to mark successful: ' + (err.message || err));
       }
     };
 
     window.markWithdrawRejectSafe = async function (id, userId, amount) {
       try {
         if (!confirm('Reject this withdrawal and refund user?')) return;
-        if (!userId) {
-          alert('Missing userId on withdraw; cannot refund automatically.');
-          // still update withdraw to rejected if you want — comment next line if not desired
-          await db.collection('Withdraw').doc(id).update({ status: 'rejected' });
-          return;
-        }
         await db.collection('Withdraw').doc(id).update({ status: 'rejected' });
         try { await db.collection('Transaction').doc(id).update({ status: 'rejected' }); } catch(e){ /* ignore */ }
-
-        // refund - best-effort (assumes users collection and walletBalance field)
-        try {
+        if (userId) {
           await db.collection('users').doc(userId).update({
-            walletBalance: firebase.firestore.FieldValue.increment(Number(amount || 0))
+            walletBalance: firebase.firestore.FieldValue.increment(Number(amount) || 0)
           });
-        } catch (refundErr) {
-          console.error('[Payments] refund error', refundErr);
-          // if refund fails, you might want to log to an admin collection instead
         }
-
-        alert('Withdrawal rejected and user refunded (best-effort).');
+        alert('Withdrawal rejected and user refunded.');
       } catch (err) {
         console.error('[Payments] mark reject error', err);
-        alert('Failed to reject withdrawal: ' + (err && err.message ? err.message : err));
+        alert('Failed to reject withdrawal: ' + (err.message || err));
       }
     };
 
-    // done init
     console.log('[Payments] withdrawals module initialized.');
   }).catch(err => {
-    console.error('[Payments] initialization failed: ', err && err.message ? err.message : err);
-    // diagnostic: print which IDs currently exist in DOM
-    const ids = ['p-withdraw-tbody','p-withdraw-processing','p-withdraw-success','p-withdraw-rejected','p-withdraw-filter'];
-    const status = ids.map(id => ({ id, found: !!document.getElementById(id) }));
-    console.table(status);
+    console.error('[Payments] initialization failed:', err.message || err);
   });
 })();
-
 
 
 
@@ -3283,6 +3244,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

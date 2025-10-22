@@ -2976,143 +2976,214 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 /* ===== WITHDRAWALS MODULE (using createdAt) ===== */
+
+
+/* ===== WITHDRAWALS MODULE — createdAt (Withdraw) ↔ timestamp (Transaction) ===== */
 (function () {
   'use strict';
 
+  // Helper to wait for element
   function waitForId(id, timeout = 7000, interval = 100) {
     return new Promise((resolve, reject) => {
-      const deadline = Date.now() + timeout;
-      (function poll() {
+      const end = Date.now() + timeout;
+      (function check() {
         const el = document.getElementById(id);
         if (el) return resolve(el);
-        if (Date.now() > deadline) return reject(new Error('Timed out waiting for #' + id));
-        setTimeout(poll, interval);
+        if (Date.now() > end) return reject(new Error("Timeout waiting for #" + id));
+        setTimeout(check, interval);
       })();
     });
   }
 
   waitForId('p-withdraw-tbody', 8000, 100).then(async (tbodyEl) => {
-    console.log('[Payments] withdraw tbody found, initializing withdrawals module...');
+    console.log('[Payments] Withdraw section found — initializing...');
 
     if (typeof firebase === 'undefined' || !firebase.firestore) {
-      console.error('[Payments] firebase not found or firestore not available.');
+      console.error('[Payments] Firebase not initialized.');
       return;
     }
+
     const db = firebase.firestore();
 
+    // DOM refs
+    const tbody = tbodyEl;
     const elProc = document.getElementById('p-withdraw-processing');
     const elSucc = document.getElementById('p-withdraw-success');
     const elRej = document.getElementById('p-withdraw-rejected');
     const filterSel = document.getElementById('p-withdraw-filter');
-    const tbody = tbodyEl;
 
+    // Helpers
     function money(n) { return "₦" + Number(n || 0).toLocaleString(); }
-    function formatDate(ts) { try { if (!ts) return ''; const d = ts.toDate ? ts.toDate() : new Date(ts); return d.toLocaleString(); } catch(e) { return String(ts); } }
+    function formatDate(ts) {
+      try {
+        if (!ts) return '';
+        const d = ts.toDate ? ts.toDate() : new Date(ts);
+        return d.toLocaleString();
+      } catch { return String(ts); }
+    }
 
+    // Render Withdrawals Table
     function render(withdraws) {
-      try {
-        const filter = (filterSel && filterSel.value) ? filterSel.value : 'processing';
-        let filtered = withdraws;
-        if (filter === 'processing') filtered = withdraws.filter(x => x.status === 'processing');
-        else if (filter === 'completed') filtered = withdraws.filter(x => ['successful','rejected'].includes(x.status));
+      const filter = (filterSel && filterSel.value) ? filterSel.value : 'processing';
+      let filtered = withdraws;
+      if (filter === 'processing') filtered = withdraws.filter(x => x.status === 'processing');
+      else if (filter === 'completed') filtered = withdraws.filter(x => ['successful','rejected'].includes(x.status));
 
-        tbody.innerHTML = '';
-        if (filtered.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-400 text-sm">No data</td></tr>';
-          return;
-        }
-
-        filtered.forEach(w => {
-          const tr = document.createElement('tr');
-          tr.className = 'border-t';
-          tr.innerHTML = `
-            <td>${w.userId || ''}</td>
-            <td>${w.account_name || ''}</td>
-            <td>${w.accNum || ''}</td>
-            <td>${w.bankName || ''}</td>
-            <td>${money(w.amount)}</td>
-            <td>${formatDate(w.createdAt)}</td>
-            <td><span class="text-xs font-semibold ${w.status === 'processing' ? 'text-yellow-600' : w.status === 'successful' ? 'text-green-700' : 'text-red-700'}">${w.status}</span></td>
-            <td>
-              ${w.status === 'processing' ? `
-                <button class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs mr-1" onclick="markWithdrawSuccessSafe('${w.id}','${w.userId || ''}')">✅</button>
-                <button class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs" onclick="markWithdrawRejectSafe('${w.id}','${w.userId || ''}',${Number(w.amount || 0)})">❌</button>
-              ` : `<span class="text-gray-400 text-xs">Done</span>`}
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
-      } catch (err) {
-        console.error('[Payments] render error', err);
+      tbody.innerHTML = '';
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-3 text-center text-gray-400 text-sm">No data</td></tr>`;
+        return;
       }
+
+      filtered.forEach(w => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `
+          <td>${w.userId || ''}</td>
+          <td>${w.account_name || ''}</td>
+          <td>${w.accNum || ''}</td>
+          <td>${w.bankName || ''}</td>
+          <td>${money(w.amount)}</td>
+          <td>${formatDate(w.createdAt)}</td>
+          <td>
+            <span class="text-xs font-semibold ${
+              w.status === 'processing'
+                ? 'text-yellow-600'
+                : w.status === 'successful'
+                ? 'text-green-700'
+                : 'text-red-700'
+            }">${w.status}</span>
+          </td>
+          <td>
+            ${
+              w.status === 'processing'
+                ? `
+                  <button class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs mr-1"
+                    onclick="markWithdrawSuccessSafe('${w.id}','${w.userId}',${w.amount})">✅</button>
+                  <button class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs"
+                    onclick="markWithdrawRejectSafe('${w.id}','${w.userId}',${w.amount})">❌</button>
+                `
+                : `<span class="text-gray-400 text-xs">Done</span>`
+            }
+          </td>`;
+        tbody.appendChild(tr);
+      });
     }
 
+    // Update counts
     function updateCounts(list) {
-      try {
-        if (elProc) elProc.textContent = list.filter(x => x.status === 'processing').length;
-        if (elSucc) elSucc.textContent = list.filter(x => x.status === 'successful').length;
-        if (elRej) elRej.textContent = list.filter(x => x.status === 'rejected').length;
-      } catch (err) {
-        console.error('[Payments] updateCounts error', err);
-      }
+      if (elProc) elProc.textContent = list.filter(x => x.status === 'processing').length;
+      if (elSucc) elSucc.textContent = list.filter(x => x.status === 'successful').length;
+      if (elRej) elRej.textContent = list.filter(x => x.status === 'rejected').length;
     }
 
-    // 🔥 NOTE: changed 'timestamp' → 'createdAt'
-    db.collection('Withdraw')
-      .orderBy('createdAt','desc')
-      .onSnapshot((snap) => {
-        const list = [];
-        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-        console.log('[Withdraw snapshot]', list.length, list);
-        render(list);
-        updateCounts(list);
-      }, (err) => console.error('[Payments] Withdraw onSnapshot error', err));
+    // Real-time listener
+    db.collection('Withdraw').orderBy('createdAt','desc').onSnapshot(snap => {
+      const list = [];
+      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+      render(list);
+      updateCounts(list);
+    }, err => console.error('[Payments] Withdraw snapshot error:', err));
 
     if (filterSel) {
       filterSel.addEventListener('change', () => {
-        db.collection('Withdraw').orderBy('createdAt','desc').get().then((snap) => {
+        db.collection('Withdraw').orderBy('createdAt','desc').get().then(snap => {
           const list = [];
-          snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
           render(list);
         });
       });
     }
 
-    // ✅ success & reject handlers
-    window.markWithdrawSuccessSafe = async function (id, userId) {
+    // Transaction match (createdAt → timestamp)
+    async function findTransactionDocs(withdrawDoc) {
+      try {
+        let qSnap;
+        if (withdrawDoc.createdAt) {
+          qSnap = await db.collection('Transaction')
+            .where('userId','==',withdrawDoc.userId)
+            .where('type','==','Withdraw')
+            .where('timestamp','==',withdrawDoc.createdAt)
+            .get();
+        } else {
+          // fallback for old docs
+          qSnap = await db.collection('Transaction')
+            .where('userId','==',withdrawDoc.userId)
+            .where('type','==','Withdraw')
+            .where('amount','==',Number(withdrawDoc.amount))
+            .get();
+        }
+        return qSnap;
+      } catch (err) {
+        console.error('[Payments] findTransactionDocs error:', err);
+        return { forEach:()=>{} };
+      }
+    }
+
+    // Mark Successful
+    window.markWithdrawSuccessSafe = async function (id, userId, amount) {
       try {
         if (!confirm('Mark this withdrawal as SUCCESSFUL?')) return;
+
+        const withdrawSnap = await db.collection('Withdraw').doc(id).get();
+        const withdrawDoc = { id, ...withdrawSnap.data() };
+
         await db.collection('Withdraw').doc(id).update({ status: 'successful' });
-        try { await db.collection('Transaction').doc(id).update({ status: 'successful' }); } catch(e){ /* ignore */ }
-        alert('Withdrawal marked successful.');
+
+        const txSnap = await findTransactionDocs(withdrawDoc);
+        const ops = [];
+        txSnap.forEach(doc => {
+          const tx = doc.data();
+          if (tx.status === 'processing' || tx.status === 'pending') {
+            ops.push(db.collection('Transaction').doc(doc.id).update({ status: 'successful' }));
+          }
+        });
+        await Promise.all(ops);
+        alert('Withdrawal marked successful ✅');
       } catch (err) {
-        console.error('[Payments] mark success error', err);
+        console.error('[Payments] Mark success error:', err);
         alert('Failed to mark successful: ' + (err.message || err));
       }
     };
 
+    // Mark Rejected
     window.markWithdrawRejectSafe = async function (id, userId, amount) {
       try {
-        if (!confirm('Reject this withdrawal and refund user?')) return;
+        if (!confirm('Reject withdrawal and refund user?')) return;
+
+        const withdrawSnap = await db.collection('Withdraw').doc(id).get();
+        const withdrawDoc = { id, ...withdrawSnap.data() };
+
         await db.collection('Withdraw').doc(id).update({ status: 'rejected' });
-        try { await db.collection('Transaction').doc(id).update({ status: 'rejected' }); } catch(e){ /* ignore */ }
+
+        const txSnap = await findTransactionDocs(withdrawDoc);
+        const ops = [];
+        txSnap.forEach(doc => {
+          const tx = doc.data();
+          if (tx.status === 'processing' || tx.status === 'pending') {
+            ops.push(db.collection('Transaction').doc(doc.id).update({ status: 'rejected' }));
+          }
+        });
+        await Promise.all(ops);
+
+        // Refund wallet
         if (userId) {
           await db.collection('users').doc(userId).update({
             walletBalance: firebase.firestore.FieldValue.increment(Number(amount) || 0)
           });
         }
-        alert('Withdrawal rejected and user refunded.');
+
+        alert('Withdrawal rejected & user refunded ❌');
       } catch (err) {
-        console.error('[Payments] mark reject error', err);
+        console.error('[Payments] Mark reject error:', err);
         alert('Failed to reject withdrawal: ' + (err.message || err));
       }
     };
 
-    console.log('[Payments] withdrawals module initialized.');
-  }).catch(err => {
-    console.error('[Payments] initialization failed:', err.message || err);
-  });
+    console.log('[Payments] Withdrawals module initialized ✅');
+  }).catch(err => console.error('[Payments] Initialization failed:', err));
 })();
+
 
 
 
@@ -3244,6 +3315,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

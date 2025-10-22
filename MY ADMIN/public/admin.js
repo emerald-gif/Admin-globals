@@ -2974,7 +2974,10 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
-/* ===== WITHDRAW (from Transaction collection) ===== */
+			  
+				
+		  
+/* ===== WITHDRAW (from Transaction collection, using "failed" instead of "rejected") ===== */
 (function () {
   if (typeof firebase === "undefined" || !firebase.firestore) {
     console.error("Firebase not initialized.");
@@ -2985,7 +2988,7 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
   const tbody = document.getElementById("p-withdraw-tbody");
   const elProc = document.getElementById("p-withdraw-processing");
   const elSucc = document.getElementById("p-withdraw-success");
-  const elRej = document.getElementById("p-withdraw-rejected");
+  const elFail = document.getElementById("p-withdraw-failed");
   const filterSel = document.getElementById("p-withdraw-filter");
 
   function money(n) {
@@ -3001,14 +3004,18 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
   function updateCounts(list) {
     elProc.textContent = list.filter((x) => x.status === "processing").length;
     elSucc.textContent = list.filter((x) => x.status === "successful").length;
-    elRej.textContent = list.filter((x) => x.status === "rejected").length;
+    elFail.textContent = list.filter((x) => x.status === "failed").length;
   }
 
   function render(withdraws) {
     const filter = filterSel.value || "processing";
     let filtered = withdraws;
-    if (filter === "processing") filtered = withdraws.filter((x) => x.status === "processing");
-    else if (filter === "completed") filtered = withdraws.filter((x) => ["successful", "rejected"].includes(x.status));
+    if (filter === "processing")
+      filtered = withdraws.filter((x) => x.status === "processing");
+    else if (filter === "completed")
+      filtered = withdraws.filter((x) =>
+        ["successful", "failed"].includes(x.status)
+      );
 
     tbody.innerHTML = "";
     if (filtered.length === 0) {
@@ -3043,7 +3050,7 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
                 <button class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs mr-1" 
                   onclick="markTxSuccess('${w.id}')">✅</button>
                 <button class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs" 
-                  onclick="markTxReject('${w.id}','${w.userId}',${w.amount})">❌</button>`
+                  onclick="markTxFailed('${w.id}','${w.userId}',${w.amount})">❌</button>`
               : `<span class="text-gray-400 text-xs">Done</span>`
           }
         </td>`;
@@ -3051,7 +3058,7 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
     });
   }
 
-  // Realtime listener for all Withdraw-type transactions
+  // Real-time listener for all Withdraw-type transactions
   db.collection("Transaction")
     .where("type", "==", "Withdraw")
     .orderBy("timestamp", "desc")
@@ -3076,7 +3083,7 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
   // --- ACTIONS ---
 
-  // Mark Successful
+  // ✅ Mark Successful
   window.markTxSuccess = async function (txId) {
     if (!confirm("Mark this withdrawal as successful?")) return;
     try {
@@ -3088,11 +3095,11 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
     }
   };
 
-  // Mark Rejected + Refund
-  window.markTxReject = async function (txId, userId, amount) {
-    if (!confirm("Reject and refund this withdrawal?")) return;
+  // ❌ Mark Failed + Refund
+  window.markTxFailed = async function (txId, userId, amount) {
+    if (!confirm("Mark this withdrawal as failed and refund the user?")) return;
     try {
-      await db.collection("Transaction").doc(txId).update({ status: "rejected" });
+      await db.collection("Transaction").doc(txId).update({ status: "failed" });
 
       if (!userId) {
         alert("⚠️ userId missing — refund skipped");
@@ -3122,9 +3129,9 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
         console.log("Refunded ₦" + amt + " to user:", userId);
       }
 
-      alert("❌ Withdrawal rejected and user refunded.");
+      alert("❌ Withdrawal marked as failed and user refunded.");
     } catch (e) {
-      console.error("markTxReject err", e);
+      console.error("markTxFailed err", e);
       alert("Refund failed: " + e.message);
     }
   };
@@ -3135,6 +3142,13 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
+
+
+
+
+
+
+	  
 // DASHBOARD NOTIFICATION ONLY
 async function sendDashboardNotification() {
   const title = document.getElementById("notifTitle").value.trim();
@@ -3259,6 +3273,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

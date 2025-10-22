@@ -2977,213 +2977,140 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 /* ===== WITHDRAWALS MODULE (using createdAt) ===== */
 
-
-/* ===== WITHDRAWALS MODULE — createdAt (Withdraw) ↔ timestamp (Transaction) ===== */
+/* ===== TRANSACTION-BASED WITHDRAWALS MODULE ===== */
 (function () {
   'use strict';
 
-  // Helper to wait for element
-  function waitForId(id, timeout = 7000, interval = 100) {
+  function waitForId(id, timeout = 8000, interval = 100) {
     return new Promise((resolve, reject) => {
       const end = Date.now() + timeout;
-      (function check() {
+      (function poll() {
         const el = document.getElementById(id);
         if (el) return resolve(el);
-        if (Date.now() > end) return reject(new Error("Timeout waiting for #" + id));
-        setTimeout(check, interval);
+        if (Date.now() > end) return reject(new Error('Timeout waiting for #' + id));
+        setTimeout(poll, interval);
       })();
     });
   }
 
-  waitForId('p-withdraw-tbody', 8000, 100).then(async (tbodyEl) => {
-    console.log('[Payments] Withdraw section found — initializing...');
-
+  waitForId('p-withdraw-tbody', 8000).then(async (tbodyEl) => {
     if (typeof firebase === 'undefined' || !firebase.firestore) {
       console.error('[Payments] Firebase not initialized.');
       return;
     }
-
     const db = firebase.firestore();
 
-    // DOM refs
     const tbody = tbodyEl;
     const elProc = document.getElementById('p-withdraw-processing');
     const elSucc = document.getElementById('p-withdraw-success');
-    const elRej = document.getElementById('p-withdraw-rejected');
+    const elRej  = document.getElementById('p-withdraw-rejected');
     const filterSel = document.getElementById('p-withdraw-filter');
 
-    // Helpers
-    function money(n) { return "₦" + Number(n || 0).toLocaleString(); }
-    function formatDate(ts) {
-      try {
-        if (!ts) return '';
-        const d = ts.toDate ? ts.toDate() : new Date(ts);
-        return d.toLocaleString();
-      } catch { return String(ts); }
-    }
+    const money = n => '₦' + Number(n || 0).toLocaleString();
+    const formatDate = ts => {
+      if (!ts) return '';
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      return d.toLocaleString();
+    };
 
-    // Render Withdrawals Table
-    function render(withdraws) {
+    function render(list) {
       const filter = (filterSel && filterSel.value) ? filterSel.value : 'processing';
-      let filtered = withdraws;
-      if (filter === 'processing') filtered = withdraws.filter(x => x.status === 'processing');
-      else if (filter === 'completed') filtered = withdraws.filter(x => ['successful','rejected'].includes(x.status));
+      let data = list.filter(x => x.type === 'Withdraw');
+      if (filter === 'processing') data = data.filter(x => x.status === 'processing');
+      else if (filter === 'completed') data = data.filter(x => ['successful','rejected'].includes(x.status));
 
       tbody.innerHTML = '';
-      if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="py-3 text-center text-gray-400 text-sm">No data</td></tr>`;
+      if (!data.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-400 text-sm">No data</td></tr>';
         return;
       }
 
-      filtered.forEach(w => {
+      data.forEach(tx => {
         const tr = document.createElement('tr');
         tr.className = 'border-t';
         tr.innerHTML = `
-          <td>${w.userId || ''}</td>
-          <td>${w.account_name || ''}</td>
-          <td>${w.accNum || ''}</td>
-          <td>${w.bankName || ''}</td>
-          <td>${money(w.amount)}</td>
-          <td>${formatDate(w.createdAt)}</td>
+          <td>${tx.userId || ''}</td>
+          <td>${tx.account_name || ''}</td>
+          <td>${tx.accNum || ''}</td>
+          <td>${tx.bankName || ''}</td>
+          <td>${money(tx.amount)}</td>
+          <td>${formatDate(tx.timestamp)}</td>
+          <td><span class="text-xs font-semibold ${
+              tx.status==='processing' ? 'text-yellow-600' :
+              tx.status==='successful' ? 'text-green-700' : 'text-red-700'
+          }">${tx.status}</span></td>
           <td>
-            <span class="text-xs font-semibold ${
-              w.status === 'processing'
-                ? 'text-yellow-600'
-                : w.status === 'successful'
-                ? 'text-green-700'
-                : 'text-red-700'
-            }">${w.status}</span>
-          </td>
-          <td>
-            ${
-              w.status === 'processing'
-                ? `
-                  <button class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs mr-1"
-                    onclick="markWithdrawSuccessSafe('${w.id}','${w.userId}',${w.amount})">✅</button>
-                  <button class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs"
-                    onclick="markWithdrawRejectSafe('${w.id}','${w.userId}',${w.amount})">❌</button>
-                `
-                : `<span class="text-gray-400 text-xs">Done</span>`
-            }
+            ${tx.status==='processing'
+              ? `<button class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs mr-1"
+                     onclick="markTxSuccess('${tx.id}','${tx.userId}',${tx.amount})">✅</button>
+                 <button class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs"
+                     onclick="markTxReject('${tx.id}','${tx.userId}',${tx.amount})">❌</button>`
+              : `<span class="text-gray-400 text-xs">Done</span>`}
           </td>`;
         tbody.appendChild(tr);
       });
     }
 
-    // Update counts
     function updateCounts(list) {
-      if (elProc) elProc.textContent = list.filter(x => x.status === 'processing').length;
-      if (elSucc) elSucc.textContent = list.filter(x => x.status === 'successful').length;
-      if (elRej) elRej.textContent = list.filter(x => x.status === 'rejected').length;
+      const w = list.filter(x => x.type === 'Withdraw');
+      elProc.textContent = w.filter(x => x.status === 'processing').length;
+      elSucc.textContent = w.filter(x => x.status === 'successful').length;
+      elRej.textContent  = w.filter(x => x.status === 'rejected').length;
     }
 
-    // Real-time listener
-    db.collection('Withdraw').orderBy('createdAt','desc').onSnapshot(snap => {
-      const list = [];
-      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      render(list);
-      updateCounts(list);
-    }, err => console.error('[Payments] Withdraw snapshot error:', err));
+    // real-time listener on Transaction(type=Withdraw)
+    db.collection('Transaction')
+      .where('type','==','Withdraw')
+      .orderBy('timestamp','desc')
+      .onSnapshot(snap => {
+        const list = [];
+        snap.forEach(d => list.push({ id:d.id, ...d.data() }));
+        render(list);
+        updateCounts(list);
+      }, err => console.error('[Payments] Transaction listener error:', err));
 
     if (filterSel) {
       filterSel.addEventListener('change', () => {
-        db.collection('Withdraw').orderBy('createdAt','desc').get().then(snap => {
-          const list = [];
-          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-          render(list);
-        });
+        db.collection('Transaction')
+          .where('type','==','Withdraw')
+          .orderBy('timestamp','desc')
+          .get()
+          .then(q => { const arr=[]; q.forEach(d=>arr.push({id:d.id,...d.data()})); render(arr); })
+          .catch(e => console.error('[Payments] filter fetch error', e));
       });
     }
 
-    // Transaction match (createdAt → timestamp)
-    async function findTransactionDocs(withdrawDoc) {
+    // ===== Actions =====
+    window.markTxSuccess = async function (txId, userId) {
+      if (!confirm('Mark this withdrawal as SUCCESSFUL?')) return;
       try {
-        let qSnap;
-        if (withdrawDoc.createdAt) {
-          qSnap = await db.collection('Transaction')
-            .where('userId','==',withdrawDoc.userId)
-            .where('type','==','Withdraw')
-            .where('timestamp','==',withdrawDoc.createdAt)
-            .get();
-        } else {
-          // fallback for old docs
-          qSnap = await db.collection('Transaction')
-            .where('userId','==',withdrawDoc.userId)
-            .where('type','==','Withdraw')
-            .where('amount','==',Number(withdrawDoc.amount))
-            .get();
-        }
-        return qSnap;
-      } catch (err) {
-        console.error('[Payments] findTransactionDocs error:', err);
-        return { forEach:()=>{} };
-      }
-    }
-
-    // Mark Successful
-    window.markWithdrawSuccessSafe = async function (id, userId, amount) {
-      try {
-        if (!confirm('Mark this withdrawal as SUCCESSFUL?')) return;
-
-        const withdrawSnap = await db.collection('Withdraw').doc(id).get();
-        const withdrawDoc = { id, ...withdrawSnap.data() };
-
-        await db.collection('Withdraw').doc(id).update({ status: 'successful' });
-
-        const txSnap = await findTransactionDocs(withdrawDoc);
-        const ops = [];
-        txSnap.forEach(doc => {
-          const tx = doc.data();
-          if (tx.status === 'processing' || tx.status === 'pending') {
-            ops.push(db.collection('Transaction').doc(doc.id).update({ status: 'successful' }));
-          }
-        });
-        await Promise.all(ops);
-        alert('Withdrawal marked successful ✅');
-      } catch (err) {
-        console.error('[Payments] Mark success error:', err);
-        alert('Failed to mark successful: ' + (err.message || err));
+        await db.collection('Transaction').doc(txId).update({ status: 'successful' });
+        alert('Marked successful ✅');
+      } catch (e) {
+        console.error('markTxSuccess error', e);
+        alert('Failed: ' + (e.message || e));
       }
     };
 
-    // Mark Rejected
-    window.markWithdrawRejectSafe = async function (id, userId, amount) {
+    window.markTxReject = async function (txId, userId, amount) {
+      if (!confirm('Reject and refund user?')) return;
       try {
-        if (!confirm('Reject withdrawal and refund user?')) return;
-
-        const withdrawSnap = await db.collection('Withdraw').doc(id).get();
-        const withdrawDoc = { id, ...withdrawSnap.data() };
-
-        await db.collection('Withdraw').doc(id).update({ status: 'rejected' });
-
-        const txSnap = await findTransactionDocs(withdrawDoc);
-        const ops = [];
-        txSnap.forEach(doc => {
-          const tx = doc.data();
-          if (tx.status === 'processing' || tx.status === 'pending') {
-            ops.push(db.collection('Transaction').doc(doc.id).update({ status: 'rejected' }));
-          }
-        });
-        await Promise.all(ops);
-
-        // Refund wallet
+        await db.collection('Transaction').doc(txId).update({ status: 'rejected' });
         if (userId) {
           await db.collection('users').doc(userId).update({
             walletBalance: firebase.firestore.FieldValue.increment(Number(amount) || 0)
           });
         }
-
-        alert('Withdrawal rejected & user refunded ❌');
-      } catch (err) {
-        console.error('[Payments] Mark reject error:', err);
-        alert('Failed to reject withdrawal: ' + (err.message || err));
+        alert('Rejected & refunded ❌');
+      } catch (e) {
+        console.error('markTxReject error', e);
+        alert('Failed: ' + (e.message || e));
       }
     };
 
-    console.log('[Payments] Withdrawals module initialized ✅');
-  }).catch(err => console.error('[Payments] Initialization failed:', err));
+    console.log('[Payments] Transaction-based withdrawals module ready ✅');
+  }).catch(err => console.error('[Payments] init fail', err));
 })();
-
 
 
 
@@ -3315,6 +3242,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

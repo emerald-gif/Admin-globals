@@ -3143,371 +3143,108 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
+// EDIT JOB FUNCTION
+  const jobListEl = document.getElementById("jobList");
+  const jobSearchEl = document.getElementById("jobSearch");
+  const refreshBtn = document.getElementById("refreshJobsBtn");
 
+  const db = firebase.firestore();
+  let allJobs = [];
 
-/* ===== Admin Jobs - Classic Firebase (no imports) =====
-   Paste into your main.js after Firebase has been initialized.
-   Usage: call openAdminJobsTab() when admin opens the Manage Jobs tab.
-*/
+  // 🟢 Fetch all jobs from "tasks" & "affiliateJobs"
+  async function fetchAllJobs() {
+    jobListEl.innerHTML = `<p class="text-gray-500 text-center col-span-full">Fetching jobs...</p>`;
+    allJobs = [];
 
-(function(){
-  // DOM refs
-  const grid = document.getElementById('adminJobsGrid');
-  const searchInput = document.getElementById('adminJobSearch');
-  const filterSel = document.getElementById('adminJobFilter');
-  const refreshBtn = document.getElementById('refreshAdminJobs');
-  const clearSearchBtn = document.getElementById('clearSearch');
-  const itemsPerPageSel = document.getElementById('itemsPerPage');
-  const prevPageBtn = document.getElementById('prevPage');
-  const nextPageBtn = document.getElementById('nextPage');
-  const pageIndicator = document.getElementById('pageIndicator');
-  const jobsInfo = document.getElementById('adminJobsInfo');
-  const totalLoadedEl = document.getElementById('totalLoaded');
-  const countTasksEl = document.getElementById('countTasks');
-  const countAffEl = document.getElementById('countAff');
-  const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
-
-  // modal refs
-  const modal = document.getElementById('adminJobModal');
-  const modalBackdrop = document.getElementById('modalBackdrop');
-  const modalTitle = document.getElementById('modalTitle');
-  const modalMeta = document.getElementById('modalMeta');
-  const modalThumb = document.getElementById('modalThumb');
-  const modalTitleField = document.getElementById('modalTitleField');
-  const modalCategoryField = document.getElementById('modalCategoryField');
-  const modalDescField = document.getElementById('modalDescField');
-  const modalStatusField = document.getElementById('modalStatusField');
-  const modalSaveBtn = document.getElementById('modalSaveBtn');
-  const modalDeleteBtn = document.getElementById('modalDeleteBtn');
-  const modalFinishBtn = document.getElementById('modalFinishBtn');
-  const modalClose = document.getElementById('modalClose');
-
-  const confirmBox = document.getElementById('adminConfirm');
-  const confirmText = document.getElementById('confirmText');
-  const confirmYes = document.getElementById('confirmYes');
-  const confirmNo = document.getElementById('confirmNo');
-
-  // state
-  let allJobs = []; // { id, col, data }
-  let filteredJobs = [];
-  let currentJob = null;
-  let page = 1;
-  let itemsPerPage = Number(itemsPerPageSel.value || 6);
-  let selectedIds = new Set();
-
-  // helper: format postedAt if timestamp
-  function formatPostedAt(v){
-    if (!v) return '';
-    try{
-      if (v.toDate) return v.toDate().toLocaleString();
-      return new Date(v).toLocaleString();
-    }catch(e){ return String(v); }
-  }
-
-  // skeleton card while loading
-  function skeletonCard(){
-    const d = document.createElement('div');
-    d.className = 'bg-gray-800 p-4 rounded-lg animate-pulse';
-    d.innerHTML = '<div class="h-4 bg-gray-700 rounded w-3/4 mb-3"></div><div class="h-3 bg-gray-700 rounded w-full mb-2"></div><div class="h-3 bg-gray-700 rounded w-5/6"></div>';
-    return d;
-  }
-
-  function showLoading(){
-    grid.innerHTML = '';
-    for (let i=0;i<6;i++) grid.appendChild(skeletonCard());
-  }
-
-  // fetch both collections
-  async function fetchAllJobs(){
-    showLoading();
-    const db = firebase.firestore();
-    try{
-      const tasksSnap = await db.collection('tasks').orderBy('postedAt','desc').get();
-      const affSnap = await db.collection('affiliateJobs').orderBy('postedAt','desc').get();
-
-      const tasks = tasksSnap.docs.map(d => ({ id: d.id, col: 'tasks', data: d.data() }));
-      const affs = affSnap.docs.map(d => ({ id: d.id, col: 'affiliateJobs', data: d.data() }));
-
-      allJobs = [...tasks, ...affs];
-      totalLoadedEl.textContent = allJobs.length;
-      countTasksEl.textContent = tasks.length;
-      countAffEl.textContent = affs.length;
-      page = 1;
-      applyFilters();
-    }catch(err){
-      console.error('fetchAllJobs err', err);
-      grid.innerHTML = '<div class="text-red-500">Failed to load jobs — check console</div>';
-    }
-  }
-
-  // debounce helper
-  function debounce(fn, wait=300){
-    let t;
-    return function(...args){
-      clearTimeout(t);
-      t = setTimeout(()=> fn.apply(this, args), wait);
-    };
-  }
-
-  // filtering & pagination
-  function applyFilters(){
-    const q = (searchInput.value || '').trim().toLowerCase();
-    const filter = filterSel.value;
-    filteredJobs = allJobs.filter(j => {
-      if (filter !== 'all' && j.col !== filter) return false;
-      const title = String(j.data.title || '').toLowerCase();
-      return title.includes(q);
-    });
-    renderPage();
-  }
-
-  function renderPage(){
-    itemsPerPage = Number(itemsPerPageSel.value || 6);
-    const total = filteredJobs.length;
-    const pages = Math.max(1, Math.ceil(total / itemsPerPage));
-    if (page > pages) page = pages;
-    const start = (page - 1) * itemsPerPage;
-    const pageItems = filteredJobs.slice(start, start + itemsPerPage);
-
-    grid.innerHTML = '';
-    if (!pageItems.length){
-      grid.innerHTML = '<div class="col-span-full text-center text-gray-400 py-6">No jobs found</div>';
-    } else {
-      pageItems.forEach(renderJobCard);
+    const collections = ["tasks", "affiliateJobs"];
+    for (const coll of collections) {
+      const snapshot = await db.collection(coll).get();
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        allJobs.push({
+          id: docSnap.id,
+          from: coll,
+          ...data,
+        });
+      });
     }
 
-    jobsInfo.textContent = `${total} result(s) • showing ${start+1}-${Math.min(start+pageItems.length, total)}`;
-    pageIndicator.textContent = `${page} / ${pages}`;
-    prevPageBtn.disabled = page <= 1;
-    nextPageBtn.disabled = page >= pages;
-
-    // bulk button visibility
-    bulkDeleteBtn.classList.toggle('hidden', selectedIds.size === 0);
+    renderJobs(allJobs);
   }
 
-  // render single job card
-  function renderJobCard(job){
-    const c = document.createElement('div');
-    c.className = 'bg-gray-800 p-3 rounded-lg border border-gray-700 flex flex-col gap-2';
-    // thumbnail (screenshot or campaign logo)
-    const thumbUrl = job.data.screenshotURL || job.data.campaignLogoURL || '';
-    const shortDesc = (job.data.description || job.data.instructions || '').slice(0,90);
-    const status = job.data.status || 'on review';
+  // 🎨 Render jobs beautifully
+  function renderJobs(jobs) {
+    if (!jobs.length) {
+      jobListEl.innerHTML = `<p class="text-gray-500 text-center col-span-full">No jobs found.</p>`;
+      return;
+    }
 
-    c.innerHTML = `
-      <div class="flex justify-between items-start gap-2">
-        <div class="flex items-start gap-3">
-          <label class="flex items-center gap-2">
-            <input data-id="${job.id}" data-col="${job.col}" type="checkbox" class="job-select hidden" />
-            <div class="w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center shrink-0">
-              ${thumbUrl ? `<img src="${thumbUrl}" class="w-full h-full object-cover">` : `<div class="text-xs text-gray-400">No image</div>`}
-            </div>
-          </label>
-          <div>
-            <div class="text-sm text-gray-300 font-semibold">${escapeHtml(job.data.title || '(no title)')}</div>
-            <div class="text-xs text-gray-400">${escapeHtml(shortDesc)}${shortDesc.length>=90? '...':''}</div>
-            <div class="text-xs text-gray-500 mt-2">${job.col} • ${formatPostedAt(job.data.postedAt)}</div>
-          </div>
+    jobListEl.innerHTML = jobs
+      .map(
+        (job) => `
+      <div class="bg-white rounded-2xl p-5 shadow-md hover:shadow-xl transition duration-300 border border-gray-100 relative overflow-hidden">
+
+        <div class="absolute right-0 top-0 bg-gradient-to-l from-blue-600 text-white text-xs px-3 py-1 rounded-bl-2xl">
+          ${job.from === "tasks" ? "Task Job" : "Affiliate Job"}
         </div>
 
-        <div class="flex flex-col items-end gap-2">
-          <div class="px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClass(status)}">${status}</div>
-          <div class="flex gap-2">
-            <button class="open-btn text-blue-400 text-sm underline" data-id="${job.id}" data-col="${job.col}">Open</button>
-            <button class="edit-btn bg-yellow-600 hover:bg-yellow-500 px-2 py-1 rounded text-xs" data-id="${job.id}" data-col="${job.col}">Edit</button>
+        <div class="flex justify-between items-start mb-3">
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold text-gray-900 leading-snug">${job.title || "Untitled Job"}</h3>
+            <p class="text-sm text-gray-600 mt-1">${job.category || "General"} • Status: <span class="text-blue-600 capitalize">${job.status || "N/A"}</span></p>
           </div>
+          <button onclick="deleteJob('${job.from}','${job.id}')"
+            class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm shadow-sm transition duration-200">
+            Delete
+          </button>
         </div>
-      </div>
-    `;
 
-    // wire checkboxes & action buttons
-    const checkbox = c.querySelector('.job-select');
-    checkbox.addEventListener('change', (e)=>{
-      const id = e.target.dataset.id + '::' + e.target.dataset.col;
-      if (e.target.checked) selectedIds.add(id); else selectedIds.delete(id);
-      bulkDeleteBtn.classList.toggle('hidden', selectedIds.size === 0);
-    });
-
-    c.querySelector('.open-btn').addEventListener('click', ()=> openModal(job, {focusEdit:false}));
-    c.querySelector('.edit-btn').addEventListener('click', ()=> openModal(job, {focusEdit:true}));
-
-    grid.appendChild(c);
-  }
-
-  // simple html esc
-  function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-  function statusBadgeClass(status){
-    switch((status||'').toLowerCase()){
-      case 'active': return 'bg-green-600 text-white';
-      case 'completed': return 'bg-gray-600 text-white';
-      case 'paused': return 'bg-yellow-600 text-black';
-      default: return 'bg-blue-600 text-white';
-    }
-  }
-
-  // modal operations
-  function openModal(job, opts={}) {
-    currentJob = job;
-    modalTitle.textContent = job.data.title || '(no title)';
-    modalMeta.textContent = `${job.col} • ID: ${job.id} • posted: ${formatPostedAt(job.data.postedAt)}`;
-    const thumb = job.data.screenshotURL || job.data.campaignLogoURL || '';
-    if (thumb){
-      modalThumb.src = thumb;
-      modalThumb.classList.remove('hidden');
-    } else modalThumb.classList.add('hidden');
-
-    modalTitleField.value = job.data.title || '';
-    modalCategoryField.value = job.data.category || job.data.jobType || '';
-    modalDescField.value = job.data.description || job.data.instructions || '';
-    modalStatusField.value = job.data.status || 'on review';
-
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
-
-    // wire buttons
-    modalSaveBtn.onclick = saveModalChanges;
-    modalDeleteBtn.onclick = ()=> confirmAction(`Delete this job "${job.data.title}"?`, async ()=>{
-      await deleteJob(job);
-      closeModal();
-    });
-    modalFinishBtn.onclick = ()=> confirmAction(`Mark "${job.data.title}" as completed?`, async ()=>{
-      await finishJob(job);
-      closeModal();
-    });
-    modalClose.onclick = closeModal;
-  }
-
-  function closeModal(){
-    modal.classList.add('hidden');
-    modal.style.display = 'none';
-    currentJob = null;
-  }
-
-  // confirm overlay helpers
-  function confirmAction(text, onYes){
-    confirmText.textContent = text;
-    confirmBox.classList.remove('hidden');
-    confirmYes.onclick = async ()=>{
-      confirmBox.classList.add('hidden');
-      try{ await onYes(); }catch(e){ console.error(e); alert('Action failed'); }
-    };
-    confirmNo.onclick = ()=> confirmBox.classList.add('hidden');
-  }
-
-  // delete and finish operations
-  async function deleteJob(job){
-    try{
-      await firebase.firestore().collection(job.col).doc(job.id).delete();
-      // remove locally
-      allJobs = allJobs.filter(j => !(j.id === job.id && j.col === job.col));
-      applyFilters();
-      alert('Deleted');
-    }catch(e){ console.error(e); alert('Delete failed'); }
-  }
-
-  async function finishJob(job){
-    try{
-      await firebase.firestore().collection(job.col).doc(job.id).update({ status: 'completed' });
-      // local update
-      const j = allJobs.find(x=> x.id === job.id && x.col === job.col);
-      if (j) j.data.status = 'completed';
-      applyFilters();
-      alert('Marked completed');
-    }catch(e){ console.error(e); alert('Finish failed'); }
-  }
-
-  async function saveModalChanges(){
-    if (!currentJob) return;
-    const updates = {
-      title: (modalTitleField.value||'').trim(),
-      category: (modalCategoryField.value||'').trim(),
-      status: modalStatusField.value
-    };
-    const desc = (modalDescField.value||'').trim();
-    if (currentJob.col === 'tasks') updates.description = desc;
-    else updates.instructions = desc;
-
-    try{
-      await firebase.firestore().collection(currentJob.col).doc(currentJob.id).update(updates);
-      // local
-      const j = allJobs.find(x=> x.id === currentJob.id && x.col === currentJob.col);
-      if (j) Object.assign(j.data, updates);
-      applyFilters();
-      alert('Saved');
-      closeModal();
-    }catch(e){ console.error(e); alert('Save failed'); }
-  }
-
-  // bulk delete handler
-  async function bulkDelete(){
-    if (!selectedIds.size) return;
-    const ids = Array.from(selectedIds);
-    confirmAction(`Delete ${ids.length} selected job(s)? This is permanent.`, async ()=>{
-      try{
-        const db = firebase.firestore();
-        // do sequentially to reduce risk
-        for (const key of ids){
-          const [id, col] = key.split('::');
-          await db.collection(col).doc(id).delete();
-          allJobs = allJobs.filter(j => !(j.id === id && j.col === col));
+        ${
+          job.screenshotURL || job.campaignLogoURL
+            ? `<img src="${job.screenshotURL || job.campaignLogoURL}" class="w-full h-40 object-cover rounded-xl mb-3 border border-gray-100">`
+            : ""
         }
-        selectedIds.clear();
-        applyFilters();
-        alert('Bulk delete complete');
-      }catch(e){ console.error(e); alert('Bulk delete failed'); }
-    });
+
+        <div class="text-sm text-gray-600 space-y-1">
+          <p><span class="font-medium">Workers:</span> ${job.numWorkers || 0}</p>
+          <p><span class="font-medium">Earnings per Worker:</span> ₦${job.workerPay || job.workerEarn || 0}</p>
+          <p><span class="font-medium">Total Cost:</span> ₦${job.total || 0}</p>
+        </div>
+
+        <div class="mt-4 text-xs text-gray-400 flex justify-between items-center">
+          <span>Posted: ${job.postedAt ? new Date(job.postedAt.seconds * 1000).toLocaleString() : "N/A"}</span>
+          <span class="italic">${job.postedBy?.email || "Unknown"}</span>
+        </div>
+      </div>`
+      )
+      .join("");
   }
 
-  // keyboard: Esc to close modal
-  document.addEventListener('keydown', (e)=>{
-    if (e.key === 'Escape') {
-      if (!modal.classList.contains('hidden')) closeModal();
-      if (!confirmBox.classList.contains('hidden')) confirmBox.classList.add('hidden');
+  // 🗑️ Delete job function
+  async function deleteJob(collectionName, jobId) {
+    if (!confirm("Are you sure you want to delete this job?")) return;
+    try {
+      await db.collection(collectionName).doc(jobId).delete();
+      allJobs = allJobs.filter((j) => !(j.id === jobId && j.from === collectionName));
+      renderJobs(allJobs);
+      alert("✅ Job deleted successfully!");
+    } catch (err) {
+      console.error("Error deleting job:", err);
+      alert("❌ Failed to delete job.");
     }
+  }
+
+  window.deleteJob = deleteJob;
+
+  // 🔍 Search Filter
+  jobSearchEl.addEventListener("input", (e) => {
+    const term = e.target.value.toLowerCase();
+    const filtered = allJobs.filter((j) => j.title?.toLowerCase().includes(term));
+    renderJobs(filtered);
   });
 
-  // small helpers
-  refreshBtn.addEventListener('click', fetchAllJobs);
-  clearSearchBtn.addEventListener('click', ()=> { searchInput.value=''; applyFilters(); clearSearchBtn.classList.add('hidden'); });
-
-  const debouncedFilter = debounce(()=> {
-    applyFilters();
-    clearSearchBtn.classList.toggle('hidden', !searchInput.value.trim());
-  }, 300);
-  searchInput.addEventListener('input', debouncedFilter);
-  filterSel.addEventListener('change', ()=> { page=1; applyFilters(); });
-  itemsPerPageSel.addEventListener('change', ()=> { page=1; renderPage(); });
-
-  prevPageBtn.addEventListener('click', ()=> { if (page>1) { page--; renderPage(); }});
-  nextPageBtn.addEventListener('click', ()=> { page++; renderPage(); });
-
-  bulkDeleteBtn.addEventListener('click', bulkDelete);
-
-  // function exposed for your tab switch - call when admin opens Manage Jobs
-  window.openAdminJobsTab = async function(){
-    // show section (if you use switchTab logic, you may not need this)
-    const el = document.getElementById('adminJobs');
-    if (el) {
-      // make sure it's visible (if your switchTab shows/hides)
-      el.classList.remove('hidden');
-    }
-    await fetchAllJobs();
-  };
-
-  // helpers to escape any HTML content displayed inside fields
-  // (already used for job card titles)
-  window.__AdminJobs = {
-    applyFilters,
-    fetchAllJobs,
-    openModal,
-    closeModal
-  };
-
-  // initial (do not auto-load — admin will call openAdminJobsTab())
-  // fetchAllJobs();
-
-})();
+  refreshBtn.addEventListener("click", fetchAllJobs);
+  document.addEventListener("DOMContentLoaded", fetchAllJobs);
 
 
 
@@ -3639,6 +3376,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

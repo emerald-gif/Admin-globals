@@ -3148,7 +3148,7 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
   const jobSearchEl = document.getElementById("jobSearch");
   const refreshBtn = document.getElementById("refreshJobsBtn");
 
-  const db = firebase.firestore();
+  
   let allJobs = [];
 
   // 🟢 Fetch all jobs from "tasks" & "affiliateJobs"
@@ -3376,6 +3376,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

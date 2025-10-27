@@ -18,7 +18,7 @@ console.log("✅ Firebase Initialized - Admin Dashboard Connected");
 
 
 
-// --- Tab Switching Logic ---
+// --- Tab Switchings Logic ---
 function switchTab(tabId) {
   document.querySelectorAll('.tab').forEach(tab => tab.classList.add('hidden'));
   document.getElementById(tabId).classList.remove('hidden');
@@ -3376,6 +3376,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

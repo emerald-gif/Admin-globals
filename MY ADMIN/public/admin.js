@@ -3251,107 +3251,94 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
-	  
-// DASHBOARD NOTIFICATION ONLY
-async function sendDashboardNotification() {
-  const title = document.getElementById("notifTitle").value.trim();
-  const message = document.getElementById("notifMessage").value.trim();
+// email notifications 
 
-  if (!title || !message) {
-    alert("Please enter both title and message.");
-    return;
-  }
+  let currentBatch = null;
 
-  try {
-    await firebase.firestore().collection("notifications").add({
-      title,
-      message,
-      timestamp: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    alert("Dashboard notification sent!");
-  } catch (error) {
-    console.error("Error sending dashboard notification:", error);
-    alert("Error sending dashboard notification.");
-  }
-}
-
-
-
-
-
-
-// Default email template
-const defaultEmailTemplate = `
-
-<div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; background-color: #f4f9ff; padding: 24px; border-radius: 12px; max-width: 600px; margin: auto; color: #333;">  
-  <div style="text-align: center; margin-bottom: 20px;">  
-    <a href="https://globalsplatform.com" target="_blank" style="text-decoration: none;">  
-      <img src="cid:logo.png" alt="Globals Logo" style="height: 50px;" />  
-    </a>  
-  </div>  
-  <p style="font-size: 18px; color: #1d4ed8; font-weight: 600;">Hello {{name}},</p>  
-  <p style="margin: 16px 0; line-height: 1.6;">  
-    You're One Step Away from Earning More Today!  
-    <strong>"{{title}}"</strong>    
-  </p>  
-  <p style="margin-bottom: 16px;">  
-    {{message}}  
-  </p>  
-  <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />  
-  <p style="font-size: 14px; color: #777;">  
-    Thank you for using <strong>Globals</strong> 💙 <br />  
-    <a href="https://globals-myzv.onrender.com/" style="color: #3b82f6; text-decoration: none;">Visit your dashboard</a> |  
-    <a href="mailto:sglobalsplatform@gmail.com" style="color: #3b82f6; text-decoration: none;">Contact Support</a>  
-  </p>  
-</div>  
-`; // Load saved template on admin page open
-window.addEventListener("DOMContentLoaded", () => {
-const savedTemplate = localStorage.getItem("emailTemplate");
-document.getElementById("emailTemplateEditor").value = savedTemplate || defaultEmailTemplate;
-});
-
-// Save template
-function saveEmailTemplate() {
-const template = document.getElementById("emailTemplateEditor").value;
-localStorage.setItem("emailTemplate", template);
-alert("✅ Email template saved!");
-}
-
-// Reset template
-function resetEmailTemplate() {
-document.getElementById("emailTemplateEditor").value = defaultEmailTemplate;
-localStorage.removeItem("emailTemplate");
-alert("🔄 Template reset to default.");
-}
-
-
-async function sendEmailNotification() {
-    const title = document.getElementById("notifTitle").value;
-    const message = document.getElementById("notifMessage").value;
-
-    if (!title || !message) {
-        alert("⚠️ Please enter both a title and a message");
-        return;
-    }
+  async function queueEmail() {
+    const title = document.getElementById("notifTitle").value.trim();
+    const message = document.getElementById("notifMessage").value.trim();
+    if (!title || !message) return alert("⚠️ Please enter both title and message");
 
     try {
-        const res = await fetch("https://admin-globals.onrender.com/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title, message })
-        });
+      // Try to queue (or detect existing batch for same message)
+      const res = await fetch("/queue-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, message }),
+      });
+      const data = await res.json();
+      if (!data.success) return alert("❌ Error queueing: " + (data.error || "unknown"));
 
-        const data = await res.json();
-        if (data.success) {
-            alert(`✅ ${data.message}`);
-        } else {
-            alert("❌ Failed to send email: " + data.error);
+      if (data.message === "existing-batch") {
+        // there's an existing unfinished batch with the same message
+        currentBatch = data.batch;
+        if (!confirm(`A batch with this same message is already queued (sent ${currentBatch.sent}/${currentBatch.total}). Press OK to continue sending next 100, or Cancel to abort.`)) {
+          currentBatch = null;
+          return;
         }
+        // Continue to send next set immediately
+        await sendNextChunk(currentBatch.id);
+        return;
+      }
+
+      // queued new batch
+      currentBatch = data.batch;
+      alert(`✅ Batch queued for ${currentBatch.total} recipients. Press "Send Email (Next 100)" to send the first chunk.`);
+      // Optionally auto-send first chunk if you want — currently we wait for explicit send.
     } catch (err) {
-        console.error(err);
-        alert("❌ An error occurred while sending email.");
+      console.error(err);
+      alert("❌ Error queueing email.");
     }
-}
+  }
+
+  async function sendNextChunk(batchId) {
+    try {
+      if (!batchId && currentBatch) batchId = currentBatch.id;
+      if (!batchId) return alert("No batch selected. Click 'Queue Email' first.");
+
+      const res = await fetch("/send-next", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId }),
+      });
+
+      const data = await res.json();
+      if (!data.success) return alert("❌ Send error: " + (data.error || "unknown"));
+
+      // Update currentBatch state by fetching new batch info (optional)
+      const batchResp = await fetch(`/batch/${batchId}`);
+      const batchData = await batchResp.json();
+      if (batchData.success) currentBatch = batchData.batch;
+
+      alert(`✅ Sent ${data.sentThisBatch} emails. Total sent: ${data.sent}/${data.total}. ${data.done ? "All done." : "Press Send again to send the next 100."}`);
+      if (data.done) currentBatch = null;
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error sending chunk.");
+    }
+  }
+
+  // Wire up to buttons (you already have two buttons; adjust IDs or inline onclicks)
+  // Replace your "Send Email Only" click handler to call queueEmail() instead of old sendEmailNotification()
+  // Example if you want separate "Queue" and "Send Next" buttons:
+  // Add two buttons to admin UI:
+  // <button id="queueBtn" onclick="queueEmail()">Queue Email</button>
+  // <button id="sendNextBtn" onclick="sendNextChunk()">Send Email (Next 100)</button>
+
+  // If you want same "Send Email Only" button to queue+send first chunk automatically, do:
+  async function sendEmailOnlyFlow() {
+    // queue (or detect existing), then ask confirm and send next chunk
+    await queueEmail();
+    if (currentBatch) {
+      const ok = confirm("Send the next 100 recipients now?");
+      if (ok) await sendNextChunk(currentBatch.id);
+    }
+  }
+
+  // Remove the old localStorage template logic:
+  // If you previously had saveEmailTemplate(), resetEmailTemplate(), and DOM on DOMContentLoaded setting emailTemplateEditor,
+  // remove those functions and the emailTemplateEditor textarea from the DOM. You said you'll change messages in server-side EmailJS.
 
 
 
@@ -3376,6 +3363,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

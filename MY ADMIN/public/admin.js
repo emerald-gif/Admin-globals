@@ -3253,42 +3253,68 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 // email notifications 
 
+  
+
+(function(){
+  const API_BASE = ""; // "" for same origin, or "https://admin-globals.onrender.com" if hosted
   let currentBatch = null;
+  const q = sel => document.querySelector(sel);
+
+  document.addEventListener("DOMContentLoaded", () => {
+    console.log("Admin email script loaded");
+    // optional: wire up buttons if not using inline onclick
+    // q("#queueBtn")?.addEventListener("click", queueEmail);
+    // q("#sendNextBtn")?.addEventListener("click", () => sendNextChunk());
+  });
 
   async function queueEmail() {
-    const title = document.getElementById("notifTitle").value.trim();
-    const message = document.getElementById("notifMessage").value.trim();
-    if (!title || !message) return alert("⚠️ Please enter both title and message");
-
     try {
-      // Try to queue (or detect existing batch for same message)
-      const res = await fetch("/queue-email", {
+      const titleInput = document.getElementById("notifTitle");
+      const messageInput = document.getElementById("notifMessage");
+      if (!titleInput || !messageInput) {
+        alert("Inputs not found: ensure #notifTitle and #notifMessage exist in DOM.");
+        console.error("Missing inputs:", { titleInput, messageInput });
+        return;
+      }
+
+      const title = titleInput.value.trim();
+      const message = messageInput.value.trim();
+      if (!title || !message) return alert("⚠️ Please enter both title and message");
+
+      console.log("Queueing email:", { title, message });
+
+      const btn = null; // optional: disable a button if you pass it
+      const res = await fetch(`${API_BASE}/queue-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, message }),
       });
-      const data = await res.json();
-      if (!data.success) return alert("❌ Error queueing: " + (data.error || "unknown"));
+
+      const data = await res.json().catch(e => {
+        console.error("Invalid JSON from /queue-email", e);
+        throw new Error("Invalid JSON response from server");
+      });
+
+      console.log("queue-email response:", data);
+
+      if (!data.success) {
+        alert("❌ Error queueing: " + (data.error || "unknown"));
+        return;
+      }
 
       if (data.message === "existing-batch") {
-        // there's an existing unfinished batch with the same message
         currentBatch = data.batch;
-        if (!confirm(`A batch with this same message is already queued (sent ${currentBatch.sent}/${currentBatch.total}). Press OK to continue sending next 100, or Cancel to abort.`)) {
-          currentBatch = null;
-          return;
-        }
-        // Continue to send next set immediately
+        const cont = confirm(`Existing batch: sent ${currentBatch.sent}/${currentBatch.total}. Continue sending next 100?`);
+        if (!cont) { currentBatch = null; return; }
         await sendNextChunk(currentBatch.id);
         return;
       }
 
-      // queued new batch
       currentBatch = data.batch;
-      alert(`✅ Batch queued for ${currentBatch.total} recipients. Press "Send Email (Next 100)" to send the first chunk.`);
-      // Optionally auto-send first chunk if you want — currently we wait for explicit send.
+      alert(`✅ Batch queued for ${currentBatch.total} recipients. Use "Send Email (Next 100)" to send 1st chunk.`);
     } catch (err) {
-      console.error(err);
-      alert("❌ Error queueing email.");
+      console.error("queueEmail error:", err);
+      alert("❌ Error queueing email. See console for details.");
     }
   }
 
@@ -3297,38 +3323,41 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
       if (!batchId && currentBatch) batchId = currentBatch.id;
       if (!batchId) return alert("No batch selected. Click 'Queue Email' first.");
 
-      const res = await fetch("/send-next", {
+      console.log("Sending next chunk for batch:", batchId);
+
+      const res = await fetch(`${API_BASE}/send-next`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ batchId }),
       });
 
-      const data = await res.json();
-      if (!data.success) return alert("❌ Send error: " + (data.error || "unknown"));
+      const data = await res.json().catch(e => {
+        console.error("Invalid JSON from /send-next", e);
+        throw new Error("Invalid JSON response from server");
+      });
 
-      // Update currentBatch state by fetching new batch info (optional)
-      const batchResp = await fetch(`/batch/${batchId}`);
-      const batchData = await batchResp.json();
-      if (batchData.success) currentBatch = batchData.batch;
+      console.log("send-next response:", data);
 
-      alert(`✅ Sent ${data.sentThisBatch} emails. Total sent: ${data.sent}/${data.total}. ${data.done ? "All done." : "Press Send again to send the next 100."}`);
+      if (!data.success) {
+        alert("❌ Send error: " + (data.error || "unknown"));
+        return;
+      }
+
+      // refresh batch state
+      const batchResp = await fetch(`${API_BASE}/batch/${batchId}`);
+      const batchData = await batchResp.json().catch(()=>null);
+      if (batchData && batchData.success) currentBatch = batchData.batch;
+
+      alert(`✅ Sent ${data.sentThisBatch} emails. Total sent: ${data.sent}/${data.total}. ${data.done ? "All done." : "Press Send again for next 100."}`);
       if (data.done) currentBatch = null;
+
     } catch (err) {
-      console.error(err);
-      alert("❌ Error sending chunk.");
+      console.error("sendNextChunk error:", err);
+      alert("❌ Error sending chunk. See console for details.");
     }
   }
 
-  // Wire up to buttons (you already have two buttons; adjust IDs or inline onclicks)
-  // Replace your "Send Email Only" click handler to call queueEmail() instead of old sendEmailNotification()
-  // Example if you want separate "Queue" and "Send Next" buttons:
-  // Add two buttons to admin UI:
-  // <button id="queueBtn" onclick="queueEmail()">Queue Email</button>
-  // <button id="sendNextBtn" onclick="sendNextChunk()">Send Email (Next 100)</button>
-
-  // If you want same "Send Email Only" button to queue+send first chunk automatically, do:
   async function sendEmailOnlyFlow() {
-    // queue (or detect existing), then ask confirm and send next chunk
     await queueEmail();
     if (currentBatch) {
       const ok = confirm("Send the next 100 recipients now?");
@@ -3336,9 +3365,11 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
     }
   }
 
-  // Remove the old localStorage template logic:
-  // If you previously had saveEmailTemplate(), resetEmailTemplate(), and DOM on DOMContentLoaded setting emailTemplateEditor,
-  // remove those functions and the emailTemplateEditor textarea from the DOM. You said you'll change messages in server-side EmailJS.
+  // expose functions for inline onclick buttons
+  window.queueEmail = queueEmail;
+  window.sendNextChunk = sendNextChunk;
+  window.sendEmailOnlyFlow = sendEmailOnlyFlow;
+})();
 
 
 
@@ -3363,6 +3394,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -3253,123 +3253,112 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 // email notifications 
 
-  
 
-(function(){
-  const API_BASE = ""; // "" for same origin, or "https://admin-globals.onrender.com" if hosted
-  let currentBatch = null;
-  const q = sel => document.querySelector(sel);
 
-  document.addEventListener("DOMContentLoaded", () => {
-    console.log("Admin email script loaded");
-    // optional: wire up buttons if not using inline onclick
-    // q("#queueBtn")?.addEventListener("click", queueEmail);
-    // q("#sendNextBtn")?.addEventListener("click", () => sendNextChunk());
-  });
 
-  async function queueEmail() {
+
+
+
+// DASHBOARD NOTIFICATION ONLY
+async function sendDashboardNotification() {
+  const title = document.getElementById("notifTitle").value.trim();
+  const message = document.getElementById("notifMessage").value.trim();
+
+  if (!title || !message) {
+    alert("Please enter both title and message.");
+    return;
+  }
+
+  try {
+    await firebase.firestore().collection("notifications").add({
+      title,
+      message,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    alert("Dashboard notification sent!");
+  } catch (error) {
+    console.error("Error sending dashboard notification:", error);
+    alert("Error sending dashboard notification.");
+  }
+}
+
+
+
+
+
+
+// Default email template
+const defaultEmailTemplate = `
+
+<div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; background-color: #f4f9ff; padding: 24px; border-radius: 12px; max-width: 600px; margin: auto; color: #333;">  
+  <div style="text-align: center; margin-bottom: 20px;">  
+    <a href="https://globalsplatform.com" target="_blank" style="text-decoration: none;">  
+      <img src="cid:logo.png" alt="Globals Logo" style="height: 50px;" />  
+    </a>  
+  </div>  
+  <p style="font-size: 18px; color: #1d4ed8; font-weight: 600;">Hello {{name}},</p>  
+  <p style="margin: 16px 0; line-height: 1.6;">  
+    You're One Step Away from Earning More Today!  
+    <strong>"{{title}}"</strong>    
+  </p>  
+  <p style="margin-bottom: 16px;">  
+    {{message}}  
+  </p>  
+  <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />  
+  <p style="font-size: 14px; color: #777;">  
+    Thank you for using <strong>Globals</strong> 💙 <br />  
+    <a href="https://globals-myzv.onrender.com/" style="color: #3b82f6; text-decoration: none;">Visit your dashboard</a> |  
+    <a href="mailto:sglobalsplatform@gmail.com" style="color: #3b82f6; text-decoration: none;">Contact Support</a>  
+  </p>  
+</div>  
+`; // Load saved template on admin page open
+window.addEventListener("DOMContentLoaded", () => {
+const savedTemplate = localStorage.getItem("emailTemplate");
+document.getElementById("emailTemplateEditor").value = savedTemplate || defaultEmailTemplate;
+});
+
+// Save template
+function saveEmailTemplate() {
+const template = document.getElementById("emailTemplateEditor").value;
+localStorage.setItem("emailTemplate", template);
+alert("✅ Email template saved!");
+}
+
+// Reset template
+function resetEmailTemplate() {
+document.getElementById("emailTemplateEditor").value = defaultEmailTemplate;
+localStorage.removeItem("emailTemplate");
+alert("🔄 Template reset to default.");
+}
+
+
+async function sendEmailNotification() {
+    const title = document.getElementById("notifTitle").value;
+    const message = document.getElementById("notifMessage").value;
+
+    if (!title || !message) {
+        alert("⚠️ Please enter both a title and a message");
+        return;
+    }
+
     try {
-      const titleInput = document.getElementById("notifTitle");
-      const messageInput = document.getElementById("notifMessage");
-      if (!titleInput || !messageInput) {
-        alert("Inputs not found: ensure #notifTitle and #notifMessage exist in DOM.");
-        console.error("Missing inputs:", { titleInput, messageInput });
-        return;
-      }
+        const res = await fetch("https://admin-globals.onrender.com/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, message })
+        });
 
-      const title = titleInput.value.trim();
-      const message = messageInput.value.trim();
-      if (!title || !message) return alert("⚠️ Please enter both title and message");
-
-      console.log("Queueing email:", { title, message });
-
-      const btn = null; // optional: disable a button if you pass it
-      const res = await fetch(`${API_BASE}/queue-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, message }),
-      });
-
-      const data = await res.json().catch(e => {
-        console.error("Invalid JSON from /queue-email", e);
-        throw new Error("Invalid JSON response from server");
-      });
-
-      console.log("queue-email response:", data);
-
-      if (!data.success) {
-        alert("❌ Error queueing: " + (data.error || "unknown"));
-        return;
-      }
-
-      if (data.message === "existing-batch") {
-        currentBatch = data.batch;
-        const cont = confirm(`Existing batch: sent ${currentBatch.sent}/${currentBatch.total}. Continue sending next 100?`);
-        if (!cont) { currentBatch = null; return; }
-        await sendNextChunk(currentBatch.id);
-        return;
-      }
-
-      currentBatch = data.batch;
-      alert(`✅ Batch queued for ${currentBatch.total} recipients. Use "Send Email (Next 100)" to send 1st chunk.`);
+        const data = await res.json();
+        if (data.success) {
+            alert(`✅ ${data.message}`);
+        } else {
+            alert("❌ Failed to send email: " + data.error);
+        }
     } catch (err) {
-      console.error("queueEmail error:", err);
-      alert("❌ Error queueing email. See console for details.");
+        console.error(err);
+        alert("❌ An error occurred while sending email.");
     }
-  }
-
-  async function sendNextChunk(batchId) {
-    try {
-      if (!batchId && currentBatch) batchId = currentBatch.id;
-      if (!batchId) return alert("No batch selected. Click 'Queue Email' first.");
-
-      console.log("Sending next chunk for batch:", batchId);
-
-      const res = await fetch(`${API_BASE}/send-next`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batchId }),
-      });
-
-      const data = await res.json().catch(e => {
-        console.error("Invalid JSON from /send-next", e);
-        throw new Error("Invalid JSON response from server");
-      });
-
-      console.log("send-next response:", data);
-
-      if (!data.success) {
-        alert("❌ Send error: " + (data.error || "unknown"));
-        return;
-      }
-
-      // refresh batch state
-      const batchResp = await fetch(`${API_BASE}/batch/${batchId}`);
-      const batchData = await batchResp.json().catch(()=>null);
-      if (batchData && batchData.success) currentBatch = batchData.batch;
-
-      alert(`✅ Sent ${data.sentThisBatch} emails. Total sent: ${data.sent}/${data.total}. ${data.done ? "All done." : "Press Send again for next 100."}`);
-      if (data.done) currentBatch = null;
-
-    } catch (err) {
-      console.error("sendNextChunk error:", err);
-      alert("❌ Error sending chunk. See console for details.");
-    }
-  }
-
-  async function sendEmailOnlyFlow() {
-    await queueEmail();
-    if (currentBatch) {
-      const ok = confirm("Send the next 100 recipients now?");
-      if (ok) await sendNextChunk(currentBatch.id);
-    }
-  }
-
-  // expose functions for inline onclick buttons
-  window.queueEmail = queueEmail;
-  window.sendNextChunk = sendNextChunk;
-  window.sendEmailOnlyFlow = sendEmailOnlyFlow;
-})();
+}
 
 
 
@@ -3394,6 +3383,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

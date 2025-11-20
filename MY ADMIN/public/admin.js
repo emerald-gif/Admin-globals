@@ -3285,6 +3285,70 @@ async function sendDashboardNotification() {
 
 
 
+// LOAD NOTIFICATION HISTORY
+async function loadNotificationHistory() {
+  const list = document.getElementById("notifList");
+  list.innerHTML = "<p class='text-gray-500'>Loading...</p>";
+
+  const snapshot = await firebase.firestore()
+    .collection("notifications")
+    .orderBy("timestamp", "desc")
+    .get();
+
+  list.innerHTML = "";
+
+  if (snapshot.empty) {
+    list.innerHTML = "<p class='text-gray-500'>No notifications sent yet.</p>";
+    return;
+  }
+
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    const time = data.timestamp?.toDate().toLocaleString() || "No date";
+
+    const item = document.createElement("div");
+    item.className =
+      "p-4 border rounded bg-white shadow flex justify-between items-start";
+
+    item.innerHTML = `
+      <div>
+        <h3 class="font-bold text-lg text-gray-700">${data.title}</h3>
+        <p class="text-gray-600">${data.message}</p>
+        <p class="text-xs text-gray-400 mt-1">${time}</p>
+      </div>
+
+      <button onclick="deleteNotification('${doc.id}')" 
+        class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded">
+        Delete
+      </button>
+    `;
+
+    list.appendChild(item);
+  });
+}
+
+
+
+
+
+// DELETE ONLY DASHBOARD NOTIFICATION
+async function deleteNotification(id) {
+  if (!confirm("Are you sure you want to delete this notification?")) return;
+
+  try {
+    await firebase.firestore().collection("notifications").doc(id).delete();
+    alert("Notification deleted!");
+
+    loadNotificationHistory(); // refresh list
+  } catch (error) {
+    console.error("Error deleting notification:", error);
+    alert("Failed to delete. Check console.");
+  }
+}
+
+
+
+
 
 
 // Default email template
@@ -3370,7 +3434,7 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchStats();
   startUsersModule();
   fetchPendingJobsForAdmin();
-  
+  loadNotificationHistory();
   loadTaskSubmissions();
 
   // 📲 Default Airtime → Pending live listener
@@ -3383,6 +3447,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -3258,10 +3258,9 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
   //DEDUCTION SYSTEM
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Firebase Firestore reference
   
 
-  // DOM Elements
+  // DOM elements
   const deductAllBtn = document.getElementById('deductAllBtn');
   const historyContainer = document.getElementById('deductionHistory');
   const totalUsersElem = document.getElementById('totalUsersAffected');
@@ -3269,7 +3268,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const deductionCanvas = document.getElementById('deductionChart');
 
   if (!deductAllBtn || !historyContainer || !totalUsersElem || !totalMoneyElem || !deductionCanvas) {
-    console.error("One or more admin deduction elements are missing in DOM!");
+    console.warn("Some admin deduction elements are missing. Deduction panel may not work fully.");
     return;
   }
 
@@ -3280,9 +3279,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ========================
   async function loadDeductionHistory() {
     try {
-      const snapshot = await db.collection('deduction_logs')
-        .orderBy('timestamp', 'asc')
-        .get();
+      const snapshot = await db.collection('deduction_logs').orderBy('timestamp', 'asc').get();
 
       // Reset if no deductions
       if (snapshot.empty) {
@@ -3290,6 +3287,7 @@ document.addEventListener('DOMContentLoaded', () => {
         totalUsersElem.textContent = 0;
         totalMoneyElem.textContent = 0;
         if (deductionChart) deductionChart.destroy();
+        deductionCanvas.getContext('2d').clearRect(0, 0, deductionCanvas.width, deductionCanvas.height);
         return;
       }
 
@@ -3305,15 +3303,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const users = log.affectedUsers || 0;
         const totalDeducted = log.totalDeducted || (log.amount * users);
 
-        // Update totals
         totalUsers += users;
         totalMoney += totalDeducted;
 
-        // Chart data
         chartLabels.push(date);
         chartData.push(totalDeducted);
 
-        // Transaction history entry
         const div = document.createElement('div');
         div.className = "p-2 mb-2 border-b border-gray-200 bg-white rounded";
         div.innerHTML = `
@@ -3326,41 +3321,44 @@ document.addEventListener('DOMContentLoaded', () => {
         historyContainer.appendChild(div);
       });
 
-      // Update totals display
       totalUsersElem.textContent = totalUsers;
       totalMoneyElem.textContent = totalMoney;
 
-      // Render chart
-      if (deductionChart) deductionChart.destroy();
-      const ctx = deductionCanvas.getContext('2d');
-      deductionChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: chartLabels,
-          datasets: [{
-            label: 'Total Deducted (₦)',
-            data: chartData,
-            fill: true,
-            backgroundColor: 'rgba(59, 130, 246, 0.2)', // Tailwind blue-500 opacity
-            borderColor: 'rgba(59, 130, 246, 1)',
-            tension: 0.3
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: true },
-            tooltip: { mode: 'index', intersect: false }
-          },
-          scales: {
-            x: { title: { display: true, text: 'Date/Time' } },
-            y: { title: { display: true, text: 'Total Deducted (₦)' }, beginAtZero: true }
-          }
+      // Only render chart if data exists
+      if (chartLabels.length > 0 && chartData.length > 0) {
+        if (deductionChart) deductionChart.destroy();
+        const ctx = deductionCanvas.getContext('2d');
+        if (ctx) {
+          deductionChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: chartLabels,
+              datasets: [{
+                label: 'Total Deducted (₦)',
+                data: chartData,
+                fill: true,
+                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                borderColor: 'rgba(59, 130, 246, 1)',
+                tension: 0.3
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: true }, tooltip: { mode: 'index', intersect: false } },
+              scales: {
+                x: { title: { display: true, text: 'Date/Time' } },
+                y: { title: { display: true, text: 'Total Deducted (₦)' }, beginAtZero: true }
+              }
+            }
+          });
         }
-      });
+      } else {
+        if (deductionChart) deductionChart.destroy();
+        deductionCanvas.getContext('2d').clearRect(0, 0, deductionCanvas.width, deductionCanvas.height);
+      }
 
     } catch (err) {
-      console.error("Error loading deduction history:", err);
+      console.warn("Error loading deduction history:", err);
       historyContainer.innerHTML = '<p class="text-red-500 text-sm">Error loading deduction history.</p>';
     }
   }
@@ -3384,6 +3382,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const usersSnapshot = await db.collection('users').get();
+      if (usersSnapshot.empty) {
+        alert("No users found in the database.");
+        return;
+      }
+
       const batch = db.batch();
       let affectedUsers = 0;
       let totalDeducted = 0;
@@ -3395,9 +3398,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentBalance > condition) {
           const deduction = currentBalance - amount >= 0 ? amount : currentBalance;
           const newBalance = currentBalance - deduction;
-
           batch.update(userRef, { balance: newBalance });
-
           affectedUsers++;
           totalDeducted += deduction;
         }
@@ -3410,29 +3411,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
       await batch.commit();
 
-      // Log the deduction
+      // Safe admin ID
+      const adminId = firebase.auth().currentUser?.uid || "unknown";
+
       await db.collection('deduction_logs').add({
         amount: amount,
         condition: condition,
         affectedUsers: affectedUsers,
         totalDeducted: totalDeducted,
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        adminId: firebase.auth().currentUser.uid
+        adminId: adminId
       });
 
       alert(`Deduction complete! ₦${totalDeducted} deducted from ${affectedUsers} users.`);
 
-      // Refresh history & chart
       loadDeductionHistory();
 
     } catch (error) {
-      console.error("Error during deduction:", error);
-      alert("Something went wrong! Check console.");
+      console.warn("Deduction failed:", error);
+      alert("Deduction failed. Check your console logs when possible.");
     }
   });
 });
-
-
 
 
 
@@ -3634,6 +3634,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

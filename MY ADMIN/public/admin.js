@@ -3251,7 +3251,175 @@ async function reviewBill(billId, userId, amount, approve, btnEl) {
 
 
 
-// email notifications 
+
+
+
+
+  //DEDUCTION SYSTEM
+
+
+
+
+const deductAllBtn = document.getElementById('deductAllBtn');
+const historyContainer = document.getElementById('deductionHistory');
+
+const totalUsersElem = document.getElementById('totalUsersAffected');
+const totalMoneyElem = document.getElementById('totalMoneyDeducted');
+
+let deductionChart;
+
+// Load deduction history & stats
+async function loadDeductionHistory() {
+  const snapshot = await db.collection('deduction_logs')
+    .orderBy('timestamp', 'asc') // Ascending for trend chart
+    .get();
+
+  if (snapshot.empty) {
+    historyContainer.innerHTML = '<p class="text-gray-400 text-sm">No deductions yet.</p>';
+    totalUsersElem.textContent = 0;
+    totalMoneyElem.textContent = 0;
+    if (deductionChart) deductionChart.destroy();
+    return;
+  }
+
+  let totalUsers = 0;
+  let totalMoney = 0;
+
+  const chartLabels = [];
+  const chartData = [];
+
+  historyContainer.innerHTML = '';
+
+  snapshot.forEach(doc => {
+    const log = doc.data();
+    const date = log.timestamp?.toDate().toLocaleString() || 'Unknown';
+    const users = log.affectedUsers || 0;
+    const totalDeducted = log.totalDeducted || (log.amount * users);
+
+    // Update totals
+    totalUsers += users;
+    totalMoney += totalDeducted;
+
+    // Chart data
+    chartLabels.push(date);
+    chartData.push(totalDeducted);
+
+    // History entry
+    const div = document.createElement('div');
+    div.className = "p-2 mb-2 border-b border-gray-200 bg-white rounded";
+    div.innerHTML = `
+      <p><strong>Date:</strong> ${date}</p>
+      <p><strong>Amount Deducted per User:</strong> ₦${log.amount}</p>
+      <p><strong>Condition:</strong> Balance > ₦${log.condition}</p>
+      <p><strong>Users Affected:</strong> ${users}</p>
+      <p><strong>Total Deducted:</strong> ₦${totalDeducted}</p>
+    `;
+    historyContainer.appendChild(div);
+  });
+
+  // Update totals display
+  totalUsersElem.textContent = totalUsers;
+  totalMoneyElem.textContent = totalMoney;
+
+  // Render chart
+  if (deductionChart) deductionChart.destroy();
+  const ctx = document.getElementById('deductionChart').getContext('2d');
+  deductionChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: 'Total Deducted (₦)',
+        data: chartData,
+        fill: true,
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: true },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Date/Time' } },
+        y: { title: { display: true, text: 'Total Deducted (₦)' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// Initial load
+loadDeductionHistory();
+
+// Deduction button click
+deductAllBtn.addEventListener('click', async () => {
+  const amount = parseFloat(document.getElementById('deductAmount').value);
+  const condition = parseFloat(document.getElementById('balanceCondition').value);
+
+  if (!amount || amount <= 0) {
+    alert("Please enter a valid deduction amount!");
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to deduct ₦${amount} from users with balance greater than ₦${condition}?`)) return;
+
+  try {
+    const usersSnapshot = await db.collection('users').get();
+    const batch = db.batch();
+    let affectedUsers = 0;
+    let totalDeducted = 0;
+
+    usersSnapshot.forEach(doc => {
+      const userRef = db.collection('users').doc(doc.id);
+      const currentBalance = doc.data().balance || 0;
+
+      if (currentBalance > condition) {
+        const deduction = currentBalance - amount >= 0 ? amount : currentBalance;
+        const newBalance = currentBalance - deduction;
+
+        batch.update(userRef, { balance: newBalance });
+
+        affectedUsers++;
+        totalDeducted += deduction;
+      }
+    });
+
+    if (affectedUsers === 0) {
+      alert("No users met the condition. Nothing was deducted.");
+      return;
+    }
+
+    await batch.commit();
+
+    // Log the deduction
+    await db.collection('deduction_logs').add({
+      amount: amount,
+      condition: condition,
+      affectedUsers: affectedUsers,
+      totalDeducted: totalDeducted,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      adminId: firebase.auth().currentUser.uid
+    });
+
+    alert(`Deduction complete! ₦${totalDeducted} deducted from ${affectedUsers} users.`);
+
+    // Refresh history & chart
+    loadDeductionHistory();
+
+  } catch (error) {
+    console.error("Error during deduction:", error);
+    alert("Something went wrong! Check console.");
+  }
+}); 
+
+
+
+
+
+
 
 
 
@@ -3447,6 +3615,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

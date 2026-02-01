@@ -94,6 +94,15 @@
 
 
 
+        <button 
+  class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700 px-3 py-2 rounded transition-colors duration-200"
+  onclick="switchTab('admin-deduction')"
+>
+  <i data-lucide="credit-card" class="w-5 h-5"></i>
+  <span>Admin Deduction</span>
+</button>
+        
+
       </nav>
     </aside>
 
@@ -1703,6 +1712,58 @@ Recalculate totals (scan all)
 
       
 
+
+
+
+
+
+<div class="p-4 bg-white rounded shadow max-w-3xl mx-auto">
+  <h2 class="text-xl font-bold mb-4">Admin Deduction Panel & Analytics</h2>
+
+  <!-- Deduction Controls -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block mb-1 font-medium">Deduction Amount (₦)</label>
+      <input type="number" id="deductAmount" placeholder="Enter amount" class="w-full p-2 border rounded">
+    </div>
+    <div>
+      <label class="block mb-1 font-medium">Deduct From Users With Balance:</label>
+      <select id="balanceCondition" class="w-full p-2 border rounded">
+        <option value="0">All Users</option>
+        <option value="50">Greater than ₦50</option>
+        <option value="500">Greater than ₦500</option>
+        <option value="1000">Greater than ₦1000</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="deductAllBtn" class="bg-red-500 text-white px-4 py-2 rounded w-full font-bold mb-6">
+    Proceed with Deduction
+  </button>
+
+  <!-- Totals Section -->
+  <div class="mb-6 p-4 border rounded bg-gray-50">
+    <h3 class="text-md font-bold mb-2">Cumulative Stats</h3>
+    <p><strong>Total Users Affected:</strong> <span id="totalUsersAffected">0</span></p>
+    <p><strong>Total Money Deducted:</strong> ₦<span id="totalMoneyDeducted">0</span></p>
+  </div>
+
+  <!-- Chart Section -->
+  <div class="mb-6">
+    <h3 class="text-md font-bold mb-2">Deduction Trends</h3>
+    <canvas id="deductionChart" class="w-full h-64"></canvas>
+  </div>
+
+  <!-- Transaction History -->
+  <h3 class="text-md font-bold mb-2">Deduction History</h3>
+  <div id="deductionHistory" class="max-h-96 overflow-y-auto border rounded p-2 bg-gray-50">
+    <p class="text-gray-400 text-sm">No deductions yet.</p>
+  </div>
+</div>
+
+
+
+      
       
 
     </main>
@@ -1715,6 +1776,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

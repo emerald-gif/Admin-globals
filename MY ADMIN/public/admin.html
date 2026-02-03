@@ -23,6 +23,48 @@
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
 
+
+
+
+
+<!-- 🌍 Globals UniversalAlert Modals -->
+<div id="globalsModal" 
+	style="
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.45); z-index: 9999;
+">
+  <div style="
+    background: #fff; border-radius: 20px; width: 90%; max-width: 360px;
+    text-align: center; padding: 24px 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    font-family: 'Segoe UI', sans-serif; animation: fadeIn 0.25s ease-out;
+  ">
+    <h3 id="globalsModalTitle" style="font-size: 18px; font-weight: bold; margin-bottom: 10px;
+      background: linear-gradient(135deg, #FFC107, #FF9800); -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;">
+      Notice
+    </h3>
+
+    <p id="globalsModalMessage" style="color: #444; font-size: 15px; line-height: 1.5; margin-bottom: 18px;">
+      This is your message
+    </p>
+
+    <div id="globalsModalActions" style="display: flex; justify-content: center; gap: 12px;"></div>
+  </div>
+</div>
+
+<style>
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+
+
+
+ 
+
   <div class="min-h-screen flex">
     <!-- Sidebar -->
     <aside class="w-64 bg-white shadow-xl rounded-r-3xl p-5">
@@ -1777,6 +1819,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

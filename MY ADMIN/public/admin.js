@@ -48,6 +48,84 @@ async function fetchStats() {
 
 
 
+     // ✅ GLOBALS GENERAL ALERT
+
+
+(function(){
+  const modal = document.getElementById("globalsModal");
+  const titleEl = document.getElementById("globalsModalTitle");
+  const msgEl = document.getElementById("globalsModalMessage");
+  const actionsEl = document.getElementById("globalsModalActions");
+
+  function openModal(title, message, buttons) {
+    titleEl.textContent = title || "Notice";
+    msgEl.textContent = message || "";
+    actionsEl.innerHTML = "";
+    buttons.forEach(btn => {
+      const b = document.createElement("button");
+      b.textContent = btn.label;
+      b.style.cssText = `
+        background: linear-gradient(135deg, #FFC107, #FF9800);
+        border: none; color: #fff; font-weight: 600; border-radius: 10px;
+        padding: 8px 18px; cursor: pointer; font-size: 14px;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+      `;
+      b.onclick = () => { modal.style.display="none"; btn.action(); };
+      actionsEl.appendChild(b);
+    });
+    modal.style.display = "flex";
+  }
+
+  // Override default alert
+  window.alert = function(message) {
+    return new Promise(resolve => {
+      openModal("Notice", message, [{label:"OK", action:resolve}]);
+    });
+  };
+
+  // Override default confirm
+  window.confirm = function(message) {
+    return new Promise(resolve => {
+      openModal("Confirm", message, [
+        {label:"Cancel", action:()=>resolve(false)},
+        {label:"OK", action:()=>resolve(true)}
+      ]);
+    });
+  };
+
+  // Override default prompt
+  window.prompt = function(message, defaultValue="") {
+    return new Promise(resolve => {
+      msgEl.innerHTML = `<div style="margin-bottom:12px;">${message}</div>
+        <input id='globalsPromptInput' value='${defaultValue}' style="
+          width: 100%; padding: 8px; border:1px solid #ccc; border-radius:8px;" />`;
+      actionsEl.innerHTML = "";
+      const inputBox = () => document.getElementById("globalsPromptInput").value;
+      actionsEl.appendChild(Object.assign(document.createElement("button"), {
+        textContent: "Cancel",
+        style: "background:#ccc;color:#000;padding:8px 18px;border:none;border-radius:8px;cursor:pointer;",
+        onclick: ()=>{ modal.style.display="none"; resolve(null); }
+      }));
+      actionsEl.appendChild(Object.assign(document.createElement("button"), {
+        textContent: "OK",
+        style: "background: linear-gradient(135deg, #FFC107, #FF9800);color:#fff;padding:8px 18px;border:none;border-radius:8px;cursor:pointer;",
+        onclick: ()=>{ modal.style.display="none"; resolve(inputBox()); }
+      }));
+      modal.style.display="flex";
+    });
+  };
+
+})();
+
+
+
+
+
+
+
+
+
+
 
 
 /* Users Admin Module (joinedAt version)
@@ -3634,6 +3712,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

@@ -3524,6 +3524,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+
+// Reference to your Firebase Database (MAINTENANCE ENGINE)
+
+
+
+		
+const db = firebase.database();
+const maintenanceRef = db.ref('systemSettings/maintenanceMode');
+
+// 1. Listen for current status to set the toggle correctly when you open Admin
+maintenanceRef.on('value', (snapshot) => {
+    const isLive = snapshot.val();
+    document.getElementById('maintenance-toggle').checked = isLive;
+    document.getElementById('status-text').innerText = isLive ? "Site is LOCKED (Maintenance)" : "Site is LIVE";
+    document.getElementById('status-text').style.color = isLive ? "#d93025" : "#137333";
+});
+
+// 2. Function to change status when you click the toggle
+function toggleMaintenance() {
+    const isChecked = document.getElementById('maintenance-toggle').checked;
+    maintenanceRef.set(isChecked).then(() => {
+        alert("System status updated successfully, C.E.O.");
+    }).catch((error) => {
+        alert("Error: " + error.message);
+    });
+}
+
+
+
+
+
+
+			
+
+
+
+
+
+
 // DASHBOARD NOTIFICATION ONLY
 async function sendDashboardNotification() {
   const title = document.getElementById("notifTitle").value.trim();
@@ -3712,6 +3751,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

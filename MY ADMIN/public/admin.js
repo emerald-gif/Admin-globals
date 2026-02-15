@@ -1,18 +1,25 @@
- // --- Firebase Configuration ---
+// --- Firebase Configuration ---
 const firebaseConfig = {
   apiKey: "AIzaSyCuI_Nw4HMbDWa6wR3FhHJMHOUgx53E40c",
   authDomain: "globals-17bf7.firebaseapp.com",
   projectId: "globals-17bf7",
   storageBucket: "globals-17bf7.appspot.com",
   messagingSenderId: "603274362994",
-  appId: "1:603274362994:web:c312c10cf0a42938e882eb"
+  appId: "1:603274362994:web:c312c10cf0a42938e882eb",
+  // Add this so Realtime Database knows where to go
+  databaseURL: "https://globals-17bf7-default-rtdb.firebaseio.com/" 
 };
 
+// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
 
-console.log("✅ Firebase Initialized - Admin Dashboard Connected");
+// 1. Define 'db' for Realtime Database (The Toggle)
+const rtdb = firebase.database(); 
 
+// 2. Define 'firestore' for your User Data (Tasks, Users)
+const db = firebase.firestore(); 
+
+console.log("✅ Dual Database System Connected");
 
 
 
@@ -3530,27 +3537,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 		
-const db = firebase.database();
-const maintenanceRef = db.ref('systemSettings/maintenanceMode');
+
+// --- Globals Admin Toggle Logic ---
+
+// Use 'rtdb' instead of 'db' to avoid crashing your Firestore connection
+const maintenanceRef = rtdb.ref('systemSettings/maintenanceMode');
 
 // 1. Listen for current status to set the toggle correctly when you open Admin
 maintenanceRef.on('value', (snapshot) => {
-    const isLive = snapshot.val();
-    document.getElementById('maintenance-toggle').checked = isLive;
-    document.getElementById('status-text').innerText = isLive ? "Site is LOCKED (Maintenance)" : "Site is LIVE";
-    document.getElementById('status-text').style.color = isLive ? "#d93025" : "#137333";
+    const isLocked = snapshot.val();
+    const toggleEl = document.getElementById('maintenance-toggle');
+    const textEl = document.getElementById('status-text');
+
+    if (toggleEl) toggleEl.checked = isLocked;
+    
+    if (textEl) {
+        textEl.innerText = isLocked ? "Site is LOCKED (Maintenance)" : "Site is LIVE";
+        textEl.style.color = isLocked ? "#d93025" : "#137333";
+    }
 });
 
 // 2. Function to change status when you click the toggle
 function toggleMaintenance() {
     const isChecked = document.getElementById('maintenance-toggle').checked;
-    maintenanceRef.set(isChecked).then(() => {
-        alert("System status updated successfully, C.E.O.");
-    }).catch((error) => {
-        alert("Error: " + error.message);
+    
+    // Updates the Realtime Database instantly
+    maintenanceRef.set(isChecked)
+    .then(() => {
+        console.log("C.E.O. Command Executed: Maintenance status changed.");
+    })
+    .catch((error) => {
+        alert("Action Failed: " + error.message);
+        // Reset toggle if the save failed
+        document.getElementById('maintenance-toggle').checked = !isChecked;
     });
 }
-
 
 
 
@@ -3751,6 +3772,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

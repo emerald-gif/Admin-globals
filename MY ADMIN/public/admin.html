@@ -144,6 +144,13 @@
   <i data-lucide="credit-card" class="w-5 h-5"></i>
   <span>Admin Deduction</span>
 </button>
+
+
+		  <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('admin-card')">
+          <i data-lucide="banknote" class="w-5 h-5"></i>  admin-checkin
+        </button> 
+
+
         
 
       </nav>
@@ -160,6 +167,39 @@
     
     <!-- Content Area -->
     <main class="flex-1 p-6 overflow-y-auto">
+
+
+
+<section id="admin-card" class="tab">
+      
+    <h3>System Control</h3>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px; background: #f8f9fa; border-radius: 12px;">
+        <div>
+            <p style="margin:0; font-weight:600;">Maintenance Mode</p>
+            <small id="status-text" style="color: #6b7280;">Fetching status...</small>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="maintenance-toggle" onclick="toggleMaintenance()">
+            <span class="slider round"></span>
+        </label>
+    </div>
+</section>
+
+<style>
+/* Modern Toggle Switch Design */
+.switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+.slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: #0b57d0; }
+input:checked + .slider:before { transform: translateX(24px); }
+</style>
+
+     
+
+
+
+		
       <!-- Overview -->
       <section id="overview" class="tab">
         <h2 class="text-2xl font-bold mb-6">Overview</h2>
@@ -1819,6 +1859,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

@@ -13,8 +13,6 @@ const firebaseConfig = {
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 
-// 1. Define 'db' for Realtime Database (The Toggle)
-const rtdb = firebase.database(); 
 
 // 2. Define 'firestore' for your User Data (Tasks, Users)
 const db = firebase.firestore(); 
@@ -3530,60 +3528,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-
-
-// Reference to your Firebase Database (MAINTENANCE ENGINE)
-
-
-
-		
-
-// --- Globals Admin Toggle Logic ---
-
-// Use 'rtdb' instead of 'db' to avoid crashing your Firestore connection
-const maintenanceRef = rtdb.ref('systemSettings/maintenanceMode');
-
-// 1. Listen for current status to set the toggle correctly when you open Admin
-maintenanceRef.on('value', (snapshot) => {
-    const isLocked = snapshot.val();
-    const toggleEl = document.getElementById('maintenance-toggle');
-    const textEl = document.getElementById('status-text');
-
-    if (toggleEl) toggleEl.checked = isLocked;
-    
-    if (textEl) {
-        textEl.innerText = isLocked ? "Site is LOCKED (Maintenance)" : "Site is LIVE";
-        textEl.style.color = isLocked ? "#d93025" : "#137333";
-    }
-});
-
-// 2. Function to change status when you click the toggle
-function toggleMaintenance() {
-    const isChecked = document.getElementById('maintenance-toggle').checked;
-    
-    // Updates the Realtime Database instantly
-    maintenanceRef.set(isChecked)
-    .then(() => {
-        console.log("C.E.O. Command Executed: Maintenance status changed.");
-    })
-    .catch((error) => {
-        alert("Action Failed: " + error.message);
-        // Reset toggle if the save failed
-        document.getElementById('maintenance-toggle').checked = !isChecked;
-    });
-}
-
-
-
-
-
-			
-
-
-
-
-
-
 // DASHBOARD NOTIFICATION ONLY
 async function sendDashboardNotification() {
   const title = document.getElementById("notifTitle").value.trim();
@@ -3772,6 +3716,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

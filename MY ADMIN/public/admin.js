@@ -53,6 +53,51 @@ async function fetchStats() {
 
 
 
+// ✅ GLOBALS MAINTENANCE ENGINE 
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const toggle = document.getElementById("maintenanceToggle");
+    const statusText = document.getElementById("maintenanceStatus");
+
+    if (!toggle) return; // Prevent errors if not on admin page
+
+    const configRef = firebase.firestore().collection("system").doc("config");
+
+    // Real-time sync
+    configRef.onSnapshot((doc) => {
+        if (!doc.exists) return;
+
+        const mode = doc.data().maintenanceMode;
+
+        toggle.checked = mode;
+
+        statusText.textContent = mode ? 
+            "Maintenance Mode: ON" : 
+            "Maintenance Mode: OFF";
+
+        statusText.style.color = mode ? "red" : "green";
+    });
+
+    // Update when toggled
+    toggle.addEventListener("change", function () {
+        configRef.update({
+            maintenanceMode: toggle.checked
+        });
+    });
+
+});
+
+
+
+
+
+
+
+
+
+
+
      // ✅ GLOBALS GENERAL ALERT
 
 
@@ -3716,6 +3761,7 @@ window.loadBillsAdmin   = loadBillsAdmin;
 window.reviewBill       = reviewBill;
 window.switchBillType   = switchBillType;
 window.switchBillStatus = switchBillStatus;
+
 
 
 

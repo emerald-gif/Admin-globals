@@ -148,6 +148,12 @@
 </button>
 
 
+
+		  <button class="flex items-center w-full gap-3 text-left text-gray-700 hover:text-blue-700" onclick="switchTab('admin-maintenance-section')">
+          <i data-lucide="banknote" class="w-5 h-5"></i>  MAINTENANCE ENGINE 
+        </button> 
+
+
 		  
 
 
@@ -372,6 +378,75 @@
 
 
 
+
+
+
+
+
+<div class="admin-maintenance-section">
+    <h3>System Control</h3>
+
+    <label class="switch">
+        <input type="checkbox" id="maintenanceToggle">
+        <span class="slider"></span>
+    </label>
+
+    <span id="maintenanceStatus">Loading...</span>
+</div>
+
+<style>
+	
+	  .admin-maintenance-section {
+    padding: 20px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+    margin-right: 10px;
+}
+
+.switch input { display: none; }
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    background-color: #ccc;
+    border-radius: 34px;
+    top: 0; left: 0; right: 0; bottom: 0;
+    transition: .3s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: .3s;
+}
+
+input:checked + .slider {
+    background-color: #0b57d0;
+}
+
+input:checked + .slider:before {
+    transform: translateX(24px);
+}
+
+
+</style>
+
+
+	  
 
 
 
@@ -1836,6 +1911,7 @@ Recalculate totals (scan all)
 </body>
 
 </html>
+
 
 
 

@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Globals Admin — CEO Dashboard</title>
+  <link rel="shortcut icon" href="GLOBALS.jpg" type="image/jpg">
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+/* ===== GLOBALS CEO DASHBOARD — REMASTER ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sidebar-bg: #1127b0;
+  --sidebar-dark: #0b1a8a;
+  --sidebar-accent: #2541d4;
+  --sidebar-hover: rgba(255,255,255,0.10);
+  --sidebar-active: rgba(255,255,255,0.18);
+  --sidebar-text: rgba(255,255,255,0.78);
+  --sidebar-text-active: #ffffff;
+  --sidebar-width: 240px;
+  --accent-blue: #1127b0;
+  --accent-light: #4f6aff;
+  --accent-gold: #f59e0b;
+  --bg-main: #f0f4ff;
+  --card-bg: #ffffff;
+  --font-main: 'Plus Jakarta Sans', sans-serif;
+}
+
+body {
+  font-family: var(--font-main);
+  background: var(--bg-main);
+  color: #1e2340;
+  overflow-x: hidden;
+}
+
+/* ===== LAYOUT SHELL ===== */
+#app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ===== SIDEBAR ===== */
+#sidebar {
+  width: var(--sidebar-width);
+  min-height: 100vh;
+  background: linear-gradient(160deg, #1127b0 0%, #0b1880 60%, #08124f 100%);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 100;
+  box-shadow: 6px 0 30px rgba(10,20,120,0.35);
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+
+#sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 20px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+#sidebar-logo img {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.25);
+}
+#sidebar-logo span {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.3px;
+}
+
+#sidebar-ceo-badge {
+  margin: 16px 14px 6px;
+  background: linear-gradient(90deg, rgba(255,200,0,0.15), rgba(255,160,0,0.08));
+  border: 1px solid rgba(255,200,0,0.2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#sidebar-ceo-badge .avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 800; color: white;
+  flex-shrink: 0;
+}
+#sidebar-ceo-badge .info .name {
+  font-size: 13px; font-weight: 700; color: #fff;
+  line-height: 1.2;
+}
+#sidebar-ceo-badge .info .role {
+  font-size: 10px; font-weight: 600;
+  color: #f59e0b;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+#sidebar-nav {
+  flex: 1;
+  padding: 10px 10px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+#sidebar-nav::-webkit-scrollbar { display: none; }
+
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.3);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  padding: 12px 10px 4px;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin-bottom: 2px;
+  color: var(--sidebar-text);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: all 0.18s ease;
+  text-align: left;
+  text-decoration: none;
+}
+.nav-btn:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text-active);
+  transform: translateX(3px);
+}
+.nav-btn.active {
+  background: var(--sidebar-active);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+.nav-btn.active .nav-icon {
+  color: #60a5ff;
+}
+.nav-icon {
+  width: 18px; height: 18px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.nav-btn.active .nav-icon { opacity: 1; }
+
+.nav-btn .nav-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ===== TOPBAR ===== */
+#topbar {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  height: 62px;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(17,39,176,0.08);
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  z-index: 90;
+  gap: 16px;
+  box-shadow: 0 2px 12px rgba(17,39,176,0.05);
+}
+
+#topbar-title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0d1545;
+}
+
+#topbar-greeting {
+  font-size: 13px;
+  color: #5a6690;
+  font-weight: 500;
+}
+
+#topbar-user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #1127b0, #2541d4);
+  color: white;
+  border-radius: 100px;
+  padding: 6px 14px 6px 6px;
+}
+#topbar-user-chip .chip-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800;
+}
+#topbar-user-chip span {
+  font-size: 13px; font-weight: 700;
+}
+
+#hamburger {
+  display: none;
+  cursor: pointer;
+  color: #1127b0;
+}
+
+/* ===== MAIN CONTENT ===== */
+#main-content {
+  margin-left: var(--sidebar-width);
+  margin-top: 62px;
+  min-height: calc(100vh - 62px);
+  padding: 28px;
+  flex: 1;
+}
+
+/* ===== CEO WELCOME BANNER ===== */
+#ceo-welcome-banner {
+  background: linear-gradient(120deg, #1127b0 0%, #2541d4 50%, #0b1880 100%);
+  border-radius: 20px;
+  padding: 28px 32px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(17,39,176,0.3);
+}
+#ceo-welcome-banner::before {
+  content: '';
+  position: absolute;
+  top: -50%; right: -10%;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(255,255,255,0.06), transparent 70%);
+  pointer-events: none;
+}
+#ceo-welcome-banner::after {
+  content: '';
+  position: absolute;
+  bottom: -60px; left: 30%;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(255,200,0,0.06), transparent 70%);
+  pointer-events: none;
+}
+.ceo-banner-left .greeting-line {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.ceo-banner-left .ceo-name {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+.ceo-banner-left .ceo-subtitle {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  margin-top: 6px;
+}
+.ceo-banner-left .ceo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245,158,11,0.18);
+  border: 1px solid rgba(245,158,11,0.35);
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 100px;
+  margin-top: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.ceo-banner-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.ceo-banner-right .stat-chip {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 8px 16px;
+  text-align: right;
+}
+.ceo-banner-right .stat-chip .val {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+}
+.ceo-banner-right .stat-chip .lbl {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  font-weight: 500;
+}
+
+/* ===== CARDS ===== */
+.dashboard-card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(17,39,176,0.07);
+  padding: 22px;
+  border: 1px solid rgba(17,39,176,0.06);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.dashboard-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 30px rgba(17,39,176,0.13);
+}
+
+/* ===== SECTIONS hidden by default ===== */
+.tab, .tab-section {
+  display: none;
+}
+.tab.active-section, .tab-section.active-section {
+  display: block;
+}
+/* overview is shown by default */
+#overview {
+  display: block;
+}
+
+/* ===== SECTION HEADINGS ===== */
+.section-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0d1545;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 24px;
+  background: linear-gradient(180deg, #1127b0, #4f6aff);
+  border-radius: 4px;
+}
+
+/* ===== STAT CARDS IN OVERVIEW ===== */
+.stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+  margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 22px 20px;
+  border: 1px solid rgba(17,39,176,0.06);
+  box-shadow: 0 2px 14px rgba(17,39,176,0.06);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s;
+}
+.stat-card:hover { transform: translateY(-4px); }
+.stat-card .sc-icon {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+}
+.stat-card .sc-label {
+  font-size: 12px;
+  color: #8a94b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.stat-card .sc-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0d1545;
+  margin-top: 2px;
+}
+
+/* ===== OVERLAY for mobile ===== */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 99;
+}
+
+/* ===== GLOBALS MODAL ===== */
+#globalsModal {
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55); z-index: 9999;
+}
+#globalsModal > div {
+  background: #fff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+  padding: 24px 20px;
+  box-shadow: 0 6px 40px rgba(17,39,176,0.25);
+  font-family: var(--font-main);
+  animation: gModalFade 0.25s ease-out;
+}
+@keyframes gModalFade {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  #sidebar {
+    transform: translateX(-100%);
+  }
+  #sidebar.open {
+    transform: translateX(0);
+  }
+  #sidebar-overlay.open { display: block; }
+  #main-content {
+    margin-left: 0;
+  }
+  #topbar {
+    left: 0;
+  }
+  #hamburger { display: flex; }
+  #ceo-welcome-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .ceo-banner-right {
+    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+/* ===== KEEP legacy section styles for inner content ===== */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== GLOBALS MODAL ===== -->
+<div id="globalsModal" style="display:none; align-items:center; justify-content:center;">
+  <div>
+    <h3 id="globalsModalTitle" style="font-size:18px;font-weight:bold;margin-bottom:10px;
+      background:linear-gradient(135deg,#1127b0,#4f6aff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+      Notice
+    </h3>
+    <p id="globalsModalMessage" style="color:#444;font-size:15px;line-height:1.5;margin-bottom:18px;">
+      This is your message
+    </p>
+    <div id="globalsModalActions" style="display:flex;justify-content:center;gap:12px;"></div>
+  </div>
+</div>
+
+<!-- ===== SIDEBAR OVERLAY ===== -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- ===== APP SHELL ===== -->
+<div id="app-shell">
+
+  <!-- ========== SIDEBAR ========== -->
+  <aside id="sidebar">
+    <!-- Logo -->
+    <div id="sidebar-logo">
+      <img src="GLOBALS.jpg" alt="Globals Logo" onerror="this.style.background='#2541d4';this.removeAttribute('src')">
+      <span>Globals Admin</span>
+    </div>
+
+    <!-- CEO Badge -->
+    <div id="sidebar-ceo-badge">
+      <div class="avatar">T</div>
+      <div class="info">
+        <div class="name">Tomiwa</div>
+        <div class="role">⚡ Chief Executive</div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav id="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+
+      <button class="nav-btn active" onclick="switchTab('overview');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        Overview
+        <span class="nav-dot"></span>
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('users');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+        Users
+      </button>
+
+      <div class="nav-section-label">Jobs & Tasks</div>
+
+      <button class="nav-btn" onclick="switchTab('adminReviewJobsSection');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>
+        </svg>
+        Affiliate/Task Jobs
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('manageJobs');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+        </svg>
+        Edit Jobs
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('taskSubmissionsTab');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <polyline points="9 11 12 14 22 4"/>
+        </svg>
+        Task Submissions
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('adminPostJob');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Post Admin Job
+      </button>
+
+      <div class="nav-section-label">Finance</div>
+
+      <button class="nav-btn" onclick="switchTab('withdrawals-panel');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L2 7h20z"/>
+        </svg>
+        Withdrawal Records
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('deposits-panel');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 19V5M5 12l7-7 7 7"/>
+        </svg>
+        Deposit Records
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('admin-deduction');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
+        </svg>
+        Admin Deduction
+      </button>
+
+      <div class="nav-section-label">Engagement</div>
+
+      <button class="nav-btn" onclick="switchTab('adminNotificationSender');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+        </svg>
+        Notifications
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('social-tasks-admin');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/>
+        </svg>
+        Social Tasks
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('bills-admin');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>
+        </svg>
+        Airtime &amp; Data
+      </button>
+
+      <div class="nav-section-label">Analytics</div>
+
+      <button class="nav-btn" onclick="switchTab('admin-referrals');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.768-.158-1.5-.436-2.163M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.768.158-1.5.436-2.163m0 0a5.002 5.002 0 019.128 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Referral Stats
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('admin-checkin-screen');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        Check-In Admin
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('admin-premium');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        Premium Overview
+      </button>
+
+      <div class="nav-section-label">System</div>
+
+      <button class="nav-btn" onclick="switchTab('admin-maintenance-section');setActive(this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Maintenance Engine
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ========== TOPBAR ========== -->
+  <header id="topbar">
+    <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+      <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+    <div id="topbar-title">Dashboard</div>
+    <div id="topbar-greeting">Welcome back, CEO 👑</div>
+    <div id="topbar-user-chip">
+      <div class="chip-avatar">T</div>
+      <span>Tomiwa</span>
+    </div>
+  </header>
+
+  <!-- ========== MAIN CONTENT ========== -->
+  <main id="main-content">
+
+    <!-- ======== OVERVIEW TAB ======== -->
+    <section id="overview" class="tab">
+      <!-- CEO Welcome Banner -->
+      <div id="ceo-welcome-banner">
+        <div class="ceo-banner-left">
+          <div class="greeting-line">👑 Welcome back, Chief Executive Officer</div>
+          <div class="ceo-name">Good day, Tomiwa!</div>
+          <div class="ceo-subtitle">Here's what's happening across Globals today.</div>
+          <div class="ceo-badge">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            CEO &amp; Founder — Globals Platform
+          </div>
+        </div>
+        <div class="ceo-banner-right">
+          <div class="stat-chip">
+            <div class="val" id="user-count">—</div>
+            <div class="lbl">Total Users</div>
+          </div>
+          <div class="stat-chip">
+            <div class="val" id="task-count">—</div>
+            <div class="lbl">Tasks</div>
+          </div>
+          <div class="stat-chip">
+            <div class="val" id="withdrawal-count">—</div>
+            <div class="lbl">Withdrawals</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Stats Row -->
+      <div class="stat-card-grid">
+        <div class="stat-card">
+          <div class="sc-icon" style="background:rgba(17,39,176,0.1)">
+            <svg width="22" height="22" fill="none" stroke="#1127b0" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="sc-label">Total Users</div>
+          <div class="sc-value" id="user-count-card" style="color:#1127b0">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-icon" style="background:rgba(139,92,246,0.1)">
+            <svg width="22" height="22" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/>
+            </svg>
+          </div>
+          <div class="sc-label">Tasks Submitted</div>
+          <div class="sc-value" id="task-count-card" style="color:#7c3aed">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-icon" style="background:rgba(16,185,129,0.1)">
+            <svg width="22" height="22" fill="none" stroke="#059669" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L2 7h20z"/>
+            </svg>
+          </div>
+          <div class="sc-label">Withdrawals</div>
+          <div class="sc-value" id="withdrawal-count-card" style="color:#059669">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-icon" style="background:rgba(245,158,11,0.1)">
+            <svg width="22" height="22" fill="none" stroke="#d97706" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+          </div>
+          <div class="sc-label">Premium Users</div>
+          <div class="sc-value" id="premium-count-overview" style="color:#d97706">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== USERS TAB ======== -->
+    <section id="users" class="tab">
+      <div class="section-title">Users Dashboard</div>
+      <div id="user-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="dashboard-card flex flex-col items-center">
+          <div class="text-lg font-bold" id="total-users">0</div>
+          <div class="text-gray-500 text-sm">Total Users</div>
+        </div>
+        <div class="dashboard-card flex flex-col items-center">
+          <div class="text-lg font-bold text-purple-600" id="premium-users">0</div>
+          <div class="text-gray-500 text-sm">Premium Users</div>
+        </div>
+        <div class="dashboard-card flex flex-col items-center">
+          <div class="text-lg font-bold text-blue-600" id="joined-today">0</div>
+          <div class="text-gray-500 text-sm">Joined Today</div>
+        </div>
+        <div class="dashboard-card flex flex-col items-center">
+          <div class="text-lg font-bold text-green-600" id="joined-week">0</div>
+          <div class="text-gray-500 text-sm">Last 7 Days</div>
+        </div>
+      </div>
+      <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <div class="relative flex-1 w-full max-w-lg">
+          <input id="user-search" type="text" placeholder="Search by username, email, UID, or full name..."
+            class="w-full pl-10 pr-4 py-2 rounded-full border border-gray-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition" />
+          <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1110.5 3a7.5 7.5 0 016.15 13.65z" />
+          </svg>
+        </div>
+        <select id="time-filter" class="p-2 rounded-lg border shadow focus:ring-2 focus:ring-blue-500">
+          <option value="all">All Time</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="7days">Last 7 Days</option>
+          <option value="30days">Last 30 Days</option>
+          <option value="month">This Month</option>
+        </select>
+      </div>
+      <div id="user-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+
+    <!-- ======== AFFILIATE/TASK JOBS ======== -->
+    <section id="adminReviewJobsSection" class="tab">
+      <div class="section-title">Pending Job Approvals</div>
+      <div class="flex gap-2 mb-4">
+        <button id="tabAll" class="px-4 py-2 rounded-xl bg-gray-100">All</button>
+        <button id="tabTasks" class="px-4 py-2 rounded-xl">Tasks</button>
+        <button id="tabAffiliates" class="px-4 py-2 rounded-xl">Affiliates</button>
+      </div>
+      <div id="tabContent" class="space-y-6">
+        <div id="panelAll" class="">
+          <div id="adminPendingJobs" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+        <div id="panelTasks" class="hidden">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-lg">Tasks</h3>
+            <button id="refreshTasksBtn" class="px-3 py-1 rounded bg-gray-100 text-sm">Refresh</button>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-3">
+            <div><h4 class="text-sm font-medium mb-2">Pending</h4><div id="tasksPending" class="space-y-4"></div></div>
+            <div><h4 class="text-sm font-medium mb-2">History</h4><div id="tasksHistory" class="space-y-4"></div></div>
+          </div>
+        </div>
+        <div id="panelAffiliates" class="hidden">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-lg">Affiliate Campaigns</h3>
+            <button id="refreshAffiliatesBtn" class="px-3 py-1 rounded bg-gray-100 text-sm">Refresh</button>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-3">
+            <div><h4 class="text-sm font-medium mb-2">Pending</h4><div id="affiliatesPending" class="space-y-4"></div></div>
+            <div><h4 class="text-sm font-medium mb-2">History</h4><div id="affiliatesHistory" class="space-y-4"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Job Details Modal -->
+    <div id="jobDetailsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-6 relative">
+        <button onclick="closeJobModal()" class="absolute top-3 right-3 text-gray-500 hover:text-red-500 text-xl">&times;</button>
+        <div id="jobDetailsHeader" class="flex items-center gap-3 mb-4">
+          <img id="posterPhoto" src="" alt="" class="w-12 h-12 rounded-full object-cover hidden">
+          <div>
+            <h3 id="jobDetailsTitle" class="text-xl font-semibold text-gray-800"></h3>
+            <p id="jobDetailsMeta" class="text-sm text-gray-500"></p>
+          </div>
+        </div>
+        <div id="jobDetailsContent" class="space-y-3 text-sm text-gray-700 max-h-72 overflow-auto"></div>
+        <div class="mt-6 flex justify-end gap-3">
+          <button id="approveBtnModal" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">Approve</button>
+          <button id="rejectBtnModal" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">Reject</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== EDIT JOBS ======== -->
+    <div id="manageJobs" class="tab-section px-5 py-8 max-w-6xl mx-auto">
+      <div class="section-title">Manage Jobs</div>
+      <div class="flex flex-col sm:flex-row gap-3 items-center mb-6">
+        <input id="jobSearch" type="text" placeholder="Search by job title..."
+          class="flex-1 w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition" />
+        <button id="refreshJobsBtn" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 shadow-md flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582a9.98 9.98 0 018.418-5c5.523 0 10 4.477 10 10a10 10 0 01-18.295 5.294M4 20v-5h.581"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+      <div id="jobList" class="grid md:grid-cols-2 gap-4">
+        <p class="text-gray-500 text-center col-span-full">Loading jobs...</p>
+      </div>
+    </div>
+
+    <!-- ======== TASK SUBMISSIONS ======== -->
+    <section id="taskSubmissionsTab" class="tab">
+      <div class="section-title">Task Submissions</div>
+      <div id="task-submissions-list" class="space-y-4"></div>
+    </section>
+
+    <!-- Review Section -->
+    <section id="review-section" class="hidden mt-6">
+      <button onclick="backToSubmissions()" class="mb-4 text-blue-600 hover:underline">← Back to Submissions</button>
+      <div id="review-content" class="bg-white p-6 rounded-2xl shadow-xl"></div>
+    </section>
+
+    <!-- ======== POST ADMIN JOB ======== -->
+    <section id="adminPostJob" class="tab-section p-4">
+      <div class="section-title">Post Admin Job</div>
+      <div class="space-y-4 max-w-xl">
+        <input id="adminJobCategory" type="text" placeholder="Category" class="w-full border rounded-lg p-2" />
+        <input id="adminJobTitle" type="text" placeholder="Job Title" class="w-full border rounded-lg p-2" />
+        <textarea id="adminJobInstructions" placeholder="Instructions" class="w-full border rounded-lg p-2"></textarea>
+        <input id="adminJobTargetLink" type="url" placeholder="Target Link" class="w-full border rounded-lg p-2" />
+        <input id="adminJobProofRequired" type="text" placeholder="Proof Required" class="w-full border rounded-lg p-2" />
+        <input id="adminJobNumWorkers" type="number" placeholder="Number of Workers" class="w-full border rounded-lg p-2" />
+        <input id="adminJobWorkerPay" type="number" placeholder="Pay per Worker (₦)" class="w-full border rounded-lg p-2" />
+        <input id="adminJobProofFileCount" type="number" placeholder="Number of Proof Files" value="1" class="w-full border rounded-lg p-2" />
+        <label class="block font-semibold">Campaign Logo</label>
+        <input id="adminJobLogoFile" type="file" accept="image/*" class="w-full border rounded-lg p-2" />
+        <button onclick="submitAdminJob()" class="bg-green-500 text-white px-4 py-2 rounded-lg">Post Job</button>
+      </div>
+    </section>
+
+    <!-- ======== WITHDRAWALS ======== -->
+    <section id="withdrawals-panel" class="tab-section mt-8 bg-white p-6 rounded-2xl shadow">
+      <div class="section-title">Withdrawal Records</div>
+      <div class="flex items-center gap-2 mb-4">
+        <label class="text-sm text-gray-500">Show</label>
+        <select id="p-withdraw-filter" class="border px-2 py-1 rounded text-sm">
+          <option value="processing">Processing</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-3 gap-4 mb-4">
+        <div class="bg-gray-50 p-4 rounded-lg">
+          <div class="text-xs text-gray-500">Processing</div>
+          <div id="p-withdraw-processing" class="text-2xl font-bold">0</div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg">
+          <div class="text-xs text-gray-500">Successful</div>
+          <div id="p-withdraw-success" class="text-2xl font-bold">0</div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg">
+          <div class="text-xs text-gray-500">Failed</div>
+          <div id="p-withdraw-failed" class="text-2xl font-bold">0</div>
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded-lg shadow">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" id="p-withdraw-table">
+            <thead class="text-xs text-gray-500">
+              <tr>
+                <th class="py-2 text-left">User ID</th>
+                <th class="text-left">Account Name</th>
+                <th class="text-left">Acc No</th>
+                <th class="text-left">Bank</th>
+                <th class="text-left">Amount</th>
+                <th class="text-left">Date</th>
+                <th class="text-left">Status</th>
+                <th class="text-left">Action</th>
+              </tr>
+            </thead>
+            <tbody id="p-withdraw-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== DEPOSITS ======== -->
+    <section id="deposits-panel" class="tab-section mt-8 bg-white p-6 rounded-2xl shadow">
+      <div class="section-title">Deposit Records</div>
+      <div class="grid grid-cols-3 gap-4 mb-4">
+        <div class="bg-gray-50 p-4 rounded-lg">
+          <div class="text-xs text-gray-500">Deposits Today</div>
+          <div id="p-deposits-today" class="text-2xl font-bold">0</div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg">
+          <div class="text-xs text-gray-500">Deposits Yesterday</div>
+          <div id="p-deposits-yesterday" class="text-2xl font-bold">0</div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg">
+          <div class="text-xs text-gray-500">Total Deposits</div>
+          <div id="p-deposits-total" class="text-2xl font-bold">0</div>
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h4 class="font-semibold mb-3">Recent Deposits</h4>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-xs text-gray-500">
+              <tr>
+                <th class="py-2 text-left">Username</th>
+                <th class="text-left">User ID</th>
+                <th class="text-left">Amount</th>
+                <th class="text-left">Reference</th>
+                <th class="text-left">Date</th>
+                <th class="text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody id="p-deposits-tbody">
+              <tr><td colspan="6" class="py-3 text-center text-gray-400 text-sm">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======== NOTIFICATIONS ======== -->
+    <div id="adminNotificationSender" class="tab-section px-4 pt-6 pb-24 max-w-4xl mx-auto">
+      <div class="section-title">Admin Notifications</div>
+      <input type="text" id="notifTitle" placeholder="Title" class="w-full mb-3 p-2 border rounded" />
+      <textarea id="notifMessage" placeholder="Message" class="w-full p-2 border rounded mb-3"></textarea>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <button onclick="sendDashboardNotification()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded w-full">Send to Dashboard Only</button>
+        <button onclick="sendEmailNotification()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded w-full">Send Email Only</button>
+      </div>
+      <h3 class="text-lg font-semibold mt-8 mb-2">Edit Email Template</h3>
+      <textarea id="emailTemplateEditor" class="w-full h-96 p-3 border rounded font-mono text-sm" placeholder="Paste or edit your HTML template here..."></textarea>
+      <div class="mt-3 flex gap-3">
+        <button onclick="saveEmailTemplate()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded">Save Template</button>
+        <button onclick="resetDefaultTemplate()" class="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded">Reset to Default</button>
+      </div>
+      <div id="notifHistory" class="mt-10">
+        <h2 class="text-xl font-bold mb-4 text-gray-800">Dashboard Notification History</h2>
+        <div id="notifList" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- ======== SOCIAL TASKS ======== -->
+    <div id="social-tasks-admin" class="tab-section p-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div class="section-title">📋 Social Tasks Review</div>
+        <button id="refreshBtn" class="px-4 py-2 rounded-lg bg-white shadow hover:bg-gray-50">🔄 Refresh</button>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="col-span-1 grid grid-cols-3 gap-3">
+          <div class="stat-card bg-white p-4 rounded-2xl shadow flex flex-col items-center">
+            <span class="text-gray-500 text-sm">⏳ Pending</span>
+            <span id="pendingCount" class="text-2xl font-bold text-blue-600 mt-1">0</span>
+          </div>
+          <div class="stat-card bg-white p-4 rounded-2xl shadow flex flex-col items-center">
+            <span class="text-gray-500 text-sm">✅ Approved</span>
+            <span id="approvedCount" class="text-2xl font-bold text-green-600 mt-1">0</span>
+          </div>
+          <div class="stat-card bg-white p-4 rounded-2xl shadow flex flex-col items-center">
+            <span class="text-gray-500 text-sm">❌ Rejected</span>
+            <span id="rejectedCount" class="text-2xl font-bold text-red-600 mt-1">0</span>
+          </div>
+        </div>
+        <div class="col-span-1 bg-white rounded-2xl p-4 shadow flex flex-col gap-3">
+          <div class="flex gap-2">
+            <button onclick="setCollection('TiktokInstagram', this)" class="tab-btn active">TikTok / Instagram</button>
+            <button onclick="setCollection('Whatsapp', this)" class="tab-btn">WhatsApp</button>
+            <button onclick="setCollection('Telegram', this)" class="tab-btn">Telegram</button>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button onclick="setStatusFilter('pending', this)" class="filter-btn active">⏳ Pending</button>
+            <button onclick="setStatusFilter('approved', this)" class="filter-btn">✅ Approved</button>
+            <button onclick="setStatusFilter('rejected', this)" class="filter-btn">❌ Rejected</button>
+            <button onclick="setStatusFilter('all', this)" class="filter-btn">All</button>
+          </div>
+        </div>
+        <div class="col-span-1 bg-white rounded-2xl p-4 shadow flex flex-col gap-3">
+          <input id="searchInput" type="search" placeholder="Search by user ID, username, link..." class="p-3 rounded-lg border" />
+          <div class="flex gap-2">
+            <select id="sortSelect" onchange="setSort(this.value)" class="p-2 rounded-lg border">
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+            <input id="startDate" type="date" onchange="setDateRange()" class="p-2 rounded-lg border" />
+            <input id="endDate" type="date" onchange="setDateRange()" class="p-2 rounded-lg border" />
+          </div>
+        </div>
+      </div>
+      <div id="tasksContainer" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3"></div>
+      <div class="mt-6 text-center">
+        <button id="loadMoreBtn" class="px-5 py-2 rounded-lg bg-white shadow hidden">Load more</button>
+      </div>
+    </div>
+
+    <!-- Image modal -->
+    <div id="imageModal" class="hidden fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center p-4">
+      <div class="bg-white rounded-lg max-w-3xl w-full p-4">
+        <img id="imageModalImg" src="" class="w-full h-auto rounded" />
+        <div class="mt-3 text-right">
+          <button onclick="closeImageModal()" class="px-4 py-2 rounded bg-gray-200">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm modal -->
+    <div id="confirmModal" class="hidden fixed inset-0 z-60 bg-black bg-opacity-40 flex items-center justify-center p-4">
+      <div class="bg-white rounded-lg w-full max-w-lg p-6">
+        <h3 id="confirmTitle" class="text-lg font-bold mb-3">Confirm</h3>
+        <p id="confirmText" class="text-sm text-gray-700 mb-4"></p>
+        <div id="rejectReasonWrap" class="mb-4 hidden">
+          <label class="block text-sm text-gray-600 mb-1">Reject Reason (optional)</label>
+          <textarea id="rejectReason" class="w-full p-3 border rounded-lg" rows="3"></textarea>
+        </div>
+        <div class="flex gap-3 justify-end">
+          <button onclick="closeConfirmModal()" class="px-4 py-2 rounded bg-gray-100">Cancel</button>
+          <button id="confirmActionBtn" class="px-4 py-2 rounded bg-green-500 text-white">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== AIRTIME & DATA ======== -->
+    <div id="bills-admin" class="tab-section p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
+      <div class="flex items-center justify-between mb-6">
+        <div class="section-title">📲 Airtime &amp; Data Requests</div>
+      </div>
+      <div class="flex gap-4 border-b mb-6">
+        <button onclick="switchBillType('airtime')" id="tab-airtime" class="px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600">Airtime</button>
+        <button onclick="switchBillType('data')" id="tab-data" class="px-4 py-2 font-medium text-gray-500 hover:text-blue-600">Data</button>
+      </div>
+      <div class="flex gap-3 mb-6 bg-gray-100 p-1 rounded-full w-fit shadow-inner">
+        <button onclick="switchBillStatus('pending')" id="subtab-pending" class="px-5 py-2 text-sm font-medium rounded-full bg-blue-600 text-white shadow-md">Pending</button>
+        <button onclick="switchBillStatus('successful')" id="subtab-successful" class="px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600">Successful</button>
+        <button onclick="switchBillStatus('failed')" id="subtab-failed" class="px-5 py-2 text-sm font-medium rounded-full text-gray-600 hover:text-blue-600">Failed</button>
+      </div>
+      <div id="billsContainer" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3"></div>
+    </div>
+
+    <!-- ======== REFERRAL STATS ======== -->
+    <section id="admin-referrals" class="tab-section min-h-screen p-6 bg-gradient-to-br from-[#050d1b] via-[#071f2e] to-[#050d1b] text-white">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">Referral Admin Console</h1>
+          <p class="text-sm text-slate-300 mt-1">Track referrers, pending credits, and manage referral payouts.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="ref-export-agg" class="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-pink-500 text-white shadow-md">Export Referrers CSV</button>
+          <button id="ref-scan-all" class="px-3 py-2 rounded-xl bg-white/6 hover:bg-white/10">Recalculate (scan all)</button>
+          <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5">
+            <input id="ref-realtime-toggle" type="checkbox" />
+            <span class="text-sm text-slate-300">Realtime</span>
+          </label>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-blue-600/20 via-indigo-700/10 to-purple-600/20 border border-blue-500/10">
+          <div class="text-sm text-slate-300">Total referred users</div>
+          <div id="ref-total-referred" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-green-600/20 via-emerald-700/10 to-teal-600/20 border border-green-500/10">
+          <div class="text-sm text-slate-300">Rewards awarded (₦)</div>
+          <div id="ref-total-awarded" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-yellow-600/20 via-orange-700/10 to-red-600/20 border border-yellow-500/10">
+          <div class="text-sm text-slate-300">Pending rewards (₦)</div>
+          <div id="ref-total-pending" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-purple-600/20 via-pink-700/10 to-red-600/20 border border-purple-500/10">
+          <div class="text-sm text-slate-300">Referrers (unique)</div>
+          <div id="ref-total-referrers" class="text-2xl font-bold mt-1">—</div>
+        </div>
+      </div>
+      <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 bg-white/5 p-3 rounded-2xl">
+        <div class="relative flex-1 max-w-xl w-full">
+          <input id="ref-search" type="search" placeholder="Search by referrer username, displayName or UID"
+                 class="w-full pl-10 pr-4 py-2 rounded-full bg-transparent border border-white/10 placeholder:text-slate-400 focus:outline-none" />
+          <svg class="w-5 h-5 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1110.5 3a7.5 7.5 0 016.15 13.65z" />
+          </svg>
+        </div>
+        <div class="flex items-center gap-2">
+          <select id="ref-time-filter" class="p-2 rounded-xl bg-white/5 border border-white/10">
+            <option value="all">All time</option>
+            <option value="today">Joined Today</option>
+            <option value="yesterday">Joined Yesterday</option>
+            <option value="7days">Last 7 days</option>
+            <option value="30days">Last 30 days</option>
+            <option value="month">This Month</option>
+          </select>
+          <button id="ref-refresh" class="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600">Refresh</button>
+        </div>
+      </div>
+      <div class="mb-6">
+        <h3 class="text-lg font-semibold mb-2">Top referrers</h3>
+        <div id="ref-top-list" class="grid grid-cols-1 md:grid-cols-3 gap-3"></div>
+      </div>
+      <div class="bg-white/5 p-4 rounded-2xl shadow-lg overflow-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="text-slate-300 text-left">
+              <th class="px-3 py-2">Referrer</th>
+              <th class="px-3 py-2">Name / Email</th>
+              <th class="px-3 py-2">Total Referred</th>
+              <th class="px-3 py-2">Awarded</th>
+              <th class="px-3 py-2">Pending</th>
+              <th class="px-3 py-2">Total Rewards (₦)</th>
+              <th class="px-3 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ref-table-body" class="divide-y divide-white/6"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div id="ref-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+      <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('ref-modal').classList.add('hidden')"></div>
+      <div class="relative max-w-4xl w-full bg-[#071228] rounded-2xl p-6 z-10 text-white shadow-xl border border-purple-500/20">
+        <div class="flex items-center justify-between mb-4">
+          <h3 id="ref-modal-title" class="font-bold">Referrer details</h3>
+          <button id="ref-modal-close" class="px-3 py-1 rounded-lg bg-white/6">Close</button>
+        </div>
+        <div id="ref-modal-content" class="space-y-3 max-h-[60vh] overflow-auto"></div>
+      </div>
+    </div>
+
+    <!-- ======== CHECK-IN ADMIN ======== -->
+    <div id="admin-checkin-screen" class="tab-section min-h-screen p-6 bg-gradient-to-br from-[#071024] via-[#071f2e] to-[#071024] text-white">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">Check-In Admin Console</h1>
+          <p class="text-sm text-slate-300 mt-1">Live visibility into user check-ins &amp; rewards.</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          <button id="admin-export-csv" class="px-4 py-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-black font-semibold shadow-md hover:scale-105 transition">Export CSV</button>
+          <label class="flex items-center space-x-2 text-sm select-none">
+            <input id="admin-realtime-toggle" type="checkbox" class="w-4 h-4" />
+            <span class="text-slate-300">Realtime</span>
+          </label>
+          <button id="admin-scan-all" class="px-3 py-2 rounded-2xl bg-white/6 text-sm hover:bg-white/10">Recalculate totals</button>
+        </div>
+      </div>
+      <div id="admin-summary" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="p-4 rounded-2xl bg-white/5 shadow-sm">
+          <div class="text-sm text-slate-300">Total users</div>
+          <div id="sum-total-users" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white/5 shadow-sm">
+          <div class="text-sm text-slate-300">Users checked today</div>
+          <div id="sum-checked-today" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white/5 shadow-sm">
+          <div class="text-sm text-slate-300">Total checkins (all-time)</div>
+          <div id="sum-total-checkins" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white/5 shadow-sm">
+          <div class="text-sm text-slate-300">Total rewards given (₦)</div>
+          <div id="sum-total-rewards" class="text-2xl font-bold mt-1">—</div>
+        </div>
+      </div>
+      <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mb-4">
+        <div class="flex items-center gap-2 w-full md:w-1/2">
+          <input id="admin-search" type="search" placeholder="Search name, email or uid" class="w-full p-3 rounded-xl bg-white/5 placeholder:text-slate-400 focus:outline-none" />
+        </div>
+        <div class="flex items-center gap-2">
+          <select id="admin-view-select" class="p-2 rounded-xl bg-white/5">
+            <option value="all">All users</option>
+            <option value="today">Checked today</option>
+            <option value="completed">Completed cycles</option>
+          </select>
+          <input id="admin-from" type="date" class="p-2 rounded-xl bg-white/5" />
+          <input id="admin-to" type="date" class="p-2 rounded-xl bg-white/5" />
+          <button id="admin-filter-btn" class="px-4 py-2 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-md">Filter</button>
+        </div>
+      </div>
+      <div class="overflow-auto bg-white/5 rounded-xl p-4">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="text-slate-300 text-left">
+              <th class="px-3 py-2">UID</th>
+              <th class="px-3 py-2">Name / Email</th>
+              <th class="px-3 py-2">Today</th>
+              <th class="px-3 py-2">Total checkins</th>
+              <th class="px-3 py-2">Completed cycles</th>
+              <th class="px-3 py-2">Rewards (₦)</th>
+              <th class="px-3 py-2">Last check-in</th>
+              <th class="px-3 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="admin-table-body" class="divide-y divide-white/6"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="admin-user-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+      <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('admin-user-modal').classList.add('hidden')"></div>
+      <div class="relative max-w-3xl w-full bg-[#071228] rounded-2xl p-6 z-10 text-white shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 id="modal-uid" class="font-bold">User</h3>
+          <button onclick="document.getElementById('admin-user-modal').classList.add('hidden')" class="px-3 py-1 rounded-lg bg-white/6">Close</button>
+        </div>
+        <div id="modal-content" class="space-y-3 max-h-[60vh] overflow-auto"></div>
+      </div>
+    </div>
+
+    <!-- ======== PREMIUM OVERVIEW ======== -->
+    <section id="admin-premium" class="tab-section min-h-screen p-6 bg-gradient-to-br from-[#050d1b] via-[#071f2e] to-[#050d1b] text-white">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">Premium Admin Console</h1>
+          <p class="text-sm text-slate-300 mt-1">Track premium upgrades, revenue, and manage premium access.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="premium-export-users" class="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-pink-500 text-white shadow-md">Export Users CSV</button>
+          <button id="premium-export-events" class="px-4 py-2 rounded-xl bg-white/6 text-white">Export Events</button>
+          <button id="premium-scan-all" class="px-3 py-2 rounded-xl bg-white/6 hover:bg-white/10">Recalculate</button>
+          <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5">
+            <input id="premium-realtime-toggle" type="checkbox" />
+            <span class="text-sm text-slate-300">Realtime</span>
+          </label>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="p-4 rounded-2xl bg-white/6 backdrop-blur-md border border-white/6">
+          <div class="text-sm text-slate-300">Total Users</div>
+          <div id="pm-total-users" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-purple-600/20 to-pink-600/10 border border-purple-500/10">
+          <div class="text-sm text-slate-300">Premium Users</div>
+          <div id="pm-total-premium" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white/6 backdrop-blur-md border border-white/6">
+          <div class="text-sm text-slate-300">Upgrades Today</div>
+          <div id="pm-upgrades-today" class="text-2xl font-bold mt-1">—</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white/6 backdrop-blur-md border border-white/6">
+          <div class="text-sm text-slate-300">Revenue (₦)</div>
+          <div id="pm-revenue" class="text-2xl font-bold mt-1">—</div>
+        </div>
+      </div>
+      <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 bg-white/5 p-3 rounded-2xl">
+        <div class="relative flex-1 max-w-xl w-full">
+          <input id="pm-search" type="search" placeholder="Search by UID, username, full name, or email..."
+                 class="w-full pl-10 pr-4 py-2 rounded-full bg-transparent border border-white/10 placeholder:text-slate-400 focus:outline-none" />
+          <svg class="w-5 h-5 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1110.5 3a7.5 7.5 0 016.15 13.65z" />
+          </svg>
+        </div>
+        <div class="flex items-center gap-2">
+          <select id="pm-time-filter" class="p-2 rounded-xl bg-white/5 border border-white/10">
+            <option value="all">All time</option>
+            <option value="today">Joined Today</option>
+            <option value="7days">Last 7 days</option>
+            <option value="30days">Last 30 days</option>
+          </select>
+          <button id="pm-refresh" class="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600">Refresh</button>
+        </div>
+      </div>
+      <div class="bg-white/5 p-4 rounded-2xl shadow-lg overflow-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="text-slate-300 text-left">
+              <th class="px-3 py-2">UID</th>
+              <th class="px-3 py-2">Name / Email</th>
+              <th class="px-3 py-2">Premium</th>
+              <th class="px-3 py-2">Joined</th>
+              <th class="px-3 py-2">Balance</th>
+              <th class="px-3 py-2">Upgraded At</th>
+              <th class="px-3 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pm-table-body" class="divide-y divide-white/6"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div id="pm-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+      <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('pm-modal').classList.add('hidden')"></div>
+      <div class="relative max-w-3xl w-full bg-[#071228] rounded-2xl p-6 z-10 text-white shadow-xl border border-purple-500/20">
+        <div class="flex items-center justify-between mb-4">
+          <h3 id="pm-modal-title" class="font-bold">Premium Events</h3>
+          <button id="pm-modal-close" class="px-3 py-1 rounded-lg bg-white/6">Close</button>
+        </div>
+        <div id="pm-modal-content" class="space-y-3 max-h-[60vh] overflow-auto"></div>
+      </div>
+    </div>
+
+    <!-- ======== ADMIN DEDUCTION ======== -->
+    <div id="admin-deduction" class="tab-section p-4 bg-white rounded shadow max-w-3xl mx-auto">
+      <div class="section-title">Admin Deduction Panel &amp; Analytics</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div>
+          <label class="block mb-1 font-medium">Deduction Amount (₦)</label>
+          <input type="number" id="deductAmount" placeholder="Enter amount" class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Deduct From Users With Balance:</label>
+          <select id="balanceCondition" class="w-full p-2 border rounded">
+            <option value="0">All Users</option>
+            <option value="50">Greater than ₦50</option>
+            <option value="500">Greater than ₦500</option>
+            <option value="1000">Greater than ₦1000</option>
+          </select>
+        </div>
+      </div>
+      <button id="deductAllBtn" class="bg-red-500 text-white px-4 py-2 rounded w-full font-bold mb-6">Proceed with Deduction</button>
+      <div class="mb-6 p-4 border rounded bg-gray-50">
+        <h3 class="text-md font-bold mb-2">Cumulative Stats</h3>
+        <p><strong>Total Users Affected:</strong> <span id="totalUsersAffected">0</span></p>
+        <p><strong>Total Money Deducted:</strong> ₦<span id="totalMoneyDeducted">0</span></p>
+      </div>
+      <div class="mb-6">
+        <h3 class="text-md font-bold mb-2">Deduction Trends</h3>
+        <canvas id="deductionChart" class="w-full h-64"></canvas>
+      </div>
+      <h3 class="text-md font-bold mb-2">Deduction History</h3>
+      <div id="deductionHistory" class="max-h-96 overflow-y-auto border rounded p-2 bg-gray-50">
+        <p class="text-gray-400 text-sm">No deductions yet.</p>
+      </div>
+    </div>
+
+    <!-- ======== MAINTENANCE ENGINE ======== -->
+    <div id="admin-maintenance-section" class="tab-section admin-maintenance-section p-6">
+      <div class="section-title">Maintenance Engine</div>
+      <div class="bg-white p-6 rounded-2xl shadow max-w-sm">
+        <h3 class="text-lg font-semibold mb-4">System Control</h3>
+        <div class="flex items-center gap-4">
+          <label class="switch">
+            <input type="checkbox" id="maintenanceToggle">
+            <span class="slider"></span>
+          </label>
+          <span id="maintenanceStatus" class="font-medium">Loading...</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===== LEGACY STYLES (kept from original — untouched) ===== -->
+<style>
+.switch { position:relative; display:inline-block; width:50px; height:26px; margin-right:10px; }
+.switch input { display:none; }
+.slider { position:absolute; cursor:pointer; background-color:#ccc; border-radius:34px; top:0; left:0; right:0; bottom:0; transition:.3s; }
+.slider:before { position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.3s; }
+input:checked + .slider { background-color:#1127b0; }
+input:checked + .slider:before { transform:translateX(24px); }
+
+.tab-btn, .filter-btn { padding:8px 12px; border-radius:10px; background:#f1f5f9; cursor:pointer; font-weight:600; transition:all 0.15s ease; }
+.tab-btn:hover, .filter-btn:hover { transform:translateY(-2px); }
+.tab-btn.active, .filter-btn.active { background:#2563eb; color:#fff; box-shadow:0 6px 18px rgba(37,99,235,0.16); }
+.task-card { border-radius:12px; padding:16px; background:white; border:1px solid #e6eefb; box-shadow:0 6px 18px rgba(2,6,23,0.03); }
+.task-badge { display:inline-block; padding:6px 10px; border-radius:999px; font-weight:700; font-size:12px; }
+.badge-pending { background:#fff7ed; color:#b45309; }
+.badge-approved { background:#ecfdf5; color:#15803d; }
+.badge-rejected { background:#fff1f2; color:#b91c1c; }
+.task-thumb { max-width:120px; border-radius:10px; margin-top:8px; border:1px solid #e6eefb; cursor:pointer; }
+.task-meta { font-size:13px; color:#374151; margin-bottom:6px; }
+
+:root {
+  --accent-blue: #60a5fa;
+  --accent-purple: #a78bfa;
+  --accent-green: #34d399;
+  --muted: #e6f7ff;
+  --glass: rgba(255,255,255,0.04);
+  --card-border: rgba(167,139,250,0.12);
+}
+</style>
+
+<!-- ===== DASHBOARD SWITCHS TAB OVERRIDE ===== -->
+<script>
+// This switchTab implementation works with admin.js
+// It hides all .tab and .tab-section elements, then shows the target
+// admin.js may also define switchTab - if so, this will be overridden, which is fine
+// We expose a setActive helper for sidebar button highlighting
+function switchTab(tabId) {
+  // Hide all tabs and tab-sections
+  document.querySelectorAll('.tab, .tab-section').forEach(el => {
+    el.style.display = 'none';
+  });
+  // Show target
+  const target = document.getElementById(tabId);
+  if (target) {
+    target.style.display = 'block';
+    // Update topbar title
+    const btn = document.querySelector('.nav-btn.active');
+    if (btn) {
+      const text = btn.innerText.trim();
+      const titleEl = document.getElementById('topbar-title');
+      if (titleEl) titleEl.textContent = text;
+    }
+  }
+  // Close mobile sidebar
+  closeSidebar();
+}
+
+function setActive(btn) {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('open');
+}
+function closeSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.remove('open');
+  overlay.classList.remove('open');
+}
+
+// On page load: show overview, hide everything else
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.tab, .tab-section').forEach(el => {
+    el.style.display = 'none';
+  });
+  const overview = document.getElementById('overview');
+  if (overview) overview.style.display = 'block';
+});
+</script>
+
+<script>
+  lucide.createIcons();
+</script>
+<script src="admin.js"></script>
+</body>
+</html>
